@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;}
+  .oe-root{font-family:'IBM Plex Mono',monospace;background:#F0EFE8;color:#141311;padding:2.5rem 3rem;max-width:1150px;margin:0 auto;}
+  .oe-eyebrow{color:#B8461E;font-size:12px;letter-spacing:.14em;font-weight:600;margin-bottom:14px;}
+  .oe-title{font-family:'Archivo Black',sans-serif;font-size:42px;line-height:1.1;margin:0 0 26px;letter-spacing:-.01em;}
+  .oe-meta{font-size:13px;color:#6B6A63;line-height:2;margin-bottom:4px;}
+  .oe-meta b{color:#141311;font-weight:600;}
+  .oe-rule{height:3px;background:#141311;margin:22px 0 0;}
+  .oe-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));background:#fff;border:1px solid #DEDCD2;}
+  .oe-kpi{padding:20px 16px;border-left:1px solid #DEDCD2;}
+  .oe-kpi:first-child{border-left:none;}
+  .oe-kpi-label{font-size:10.5px;letter-spacing:.06em;color:#8A897F;margin-bottom:10px;text-transform:uppercase;}
+  .oe-kpi-value{font-family:'Archivo Black',sans-serif;font-size:28px;margin-bottom:6px;}
+  .oe-kpi-value.accent{color:#B8461E;}
+  .oe-kpi-sub{font-size:11px;color:#8A897F;}
+  .oe-section{background:#fff;border:1px solid #DEDCD2;border-top:none;padding:26px 24px 30px;}
+  .oe-section h2{font-family:'Archivo Black',sans-serif;font-size:19px;margin:0;display:inline;}
+  .oe-section-sub{font-size:12.5px;color:#8A897F;margin-left:6px;}
+  .oe-legend{display:flex;gap:20px;margin:16px 0 22px;font-size:12px;color:#6B6A63;}
+  .oe-legend span{display:inline-flex;align-items:center;gap:6px;}
+  .oe-dot{width:9px;height:9px;border-radius:2px;display:inline-block;}
+  .oe-contrib{margin-bottom:22px;}
+  .oe-contrib-name{font-family:'Archivo Black',sans-serif;font-size:15px;margin-bottom:2px;}
+  .oe-contrib-dept{font-size:11px;color:#8A897F;margin-bottom:10px;}
+  .oe-bar-row{display:grid;grid-template-columns:110px 1fr 60px;align-items:center;gap:10px;margin-bottom:6px;font-size:12px;}
+  .oe-bar-label{color:#6B6A63;}
+  .oe-bar-track{height:18px;background:#EFEEE7;border-radius:2px;overflow:hidden;}
+  .oe-bar-fill{height:100%;border-radius:2px;min-width:2px;}
+  .oe-bar-value{text-align:right;font-weight:600;}
+  .oe-connect{display:flex;gap:8px;margin-bottom:18px;}
+  .oe-connect input{flex:1;height:34px;padding:0 10px;border:1px solid #DEDCD2;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:12px;background:#fff;}
+  .oe-connect button{height:34px;padding:0 14px;border:1px solid #141311;border-radius:4px;background:#141311;color:#fff;font-family:'IBM Plex Mono',monospace;font-size:12px;cursor:pointer;}
+  .oe-connect button:disabled{opacity:.5;cursor:default;}
+  .oe-status{font-size:12px;margin:-10px 0 14px;}
+  .oe-status.error{color:#B8461E;}
+  .oe-status.ok{color:#0F6E56;}
+  .oe-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:6px;}
+  .oe-table th{text-align:left;padding:8px 10px;color:#8A897F;font-weight:600;text-transform:uppercase;font-size:9.5px;letter-spacing:.05em;border-bottom:2px solid #141311;vertical-align:bottom;}
+  .oe-table td{padding:8px 10px;border-bottom:1px solid #EFEEE7;vertical-align:top;}
+  .oe-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:16px;}
+  .oe-card{border:1px solid #DEDCD2;border-radius:6px;padding:16px;}
+  .oe-card-name{font-family:'Archivo Black',sans-serif;font-size:14px;margin-bottom:2px;}
+  .oe-card-role{font-size:11px;color:#8A897F;margin-bottom:12px;}
+  .oe-card-row{font-size:11.5px;margin-bottom:7px;line-height:1.5;}
+  .oe-card-row b{color:#8A897F;text-transform:uppercase;font-size:9.5px;letter-spacing:.05em;display:block;margin-bottom:2px;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="oe-root">
+  <div class="oe-eyebrow">GROWTH &amp; SALES &middot; REACHOUT OPS</div>
+  <div class="oe-title">Outbound Engine<br/>Performance Dashboard</div>
+  <div class="oe-meta">Prepared for: <b>COO office</b></div>
+  <div class="oe-meta" id="oe-snapshot">Data snapshot: <b>&mdash;</b></div>
+  <div class="oe-meta" id="oe-channels">Platforms: <b>&mdash;</b></div>
+  <div class="oe-rule"></div>
+
+  <div style="margin:20px 0 0;">
+    <div class="oe-connect">
+      <input id="oe-url" type="text" placeholder="Paste your published Google Sheet CSV link (File > Share > Publish to web)">
+      <button id="oe-load" type="button">Connect sheet</button>
+    </div>
+    <div class="oe-status" id="oe-status" style="display:none;"></div>
+  </div>
+
+  <div class="oe-kpis" id="oe-kpis"></div>
+
+  <div class="oe-section">
+    <h2>Reachout volume by contributor</h2>
+    <span class="oe-section-sub">reachouts vs. qualified vs. conversion, sorted high to low</span>
+    <div class="oe-legend">
+      <span><span class="oe-dot" style="background:#1D9E75"></span>Total reachouts</span>
+      <span><span class="oe-dot" style="background:#D85A30"></span>Qualified leads</span>
+      <span><span class="oe-dot" style="background:#993C1D"></span>Conversion (closed)</span>
+    </div>
+    <div id="oe-contributors"></div>
+  </div>
+
+  <div class="oe-section" style="margin-top:16px;">
+    <h2>Weekly run-rate by contributor</h2>
+    <span class="oe-section-sub">reachouts, leads generated, meetings scheduled this week</span>
+    <table class="oe-table" id="oe-weekly" style="margin-top:16px;"></table>
+  </div>
+
+  <div class="oe-section" style="margin-top:16px;">
+    <h2>Coverage &amp; targeting</h2>
+    <span class="oe-section-sub">platform, region and ICP by contributor</span>
+    <div class="oe-cards" id="oe-coverage"></div>
+  </div>
+
+  <div class="oe-section" style="margin-top:16px;">
+    <h2>Campaigns, challenges &amp; response signal</h2>
+    <span class="oe-section-sub">qualitative notes as reported by each contributor</span>
+    <table class="oe-table" id="oe-notes" style="margin-top:16px;"></table>
+  </div>
+
+  <div class="oe-section" style="margin-top:16px;">
+    <h2>Full comparison table</h2>
+    <span class="oe-section-sub">every metric, side by side</span>
+    <div style="overflow-x:auto;">
+      <table class="oe-table" id="oe-comparison" style="margin-top:16px;white-space:nowrap;"></table>
+    </div>
+  </div>
+</div>
+
+<script>
+var SAMPLE_ROWS = [
+  {name:"Mehak Sharma", reportingTo:"Karan Chopra", department:"Growth", totalReachouts:368, qualifiedLeads:4, qualifiedRatio:"1.09%", platform:"X, Telegram, LinkedIn, Twitter, Reddit, DeFiLlama", offering:"Instanodes", region:"Global", icp:"Funded Projects, Test net or main net phase", weeklyReachouts:100, weeklyLeadsRaw:"3 to 4", weeklyMeetingsRaw:"1 to 2", campaigns:"LinkedIn and Telegram", challenges:"Dependency on other work", industries:"L1, L2, Game Fi, Defi", responseMechanism:"3 to 4 responses received out of 30 calls/msgs sent"},
+  {name:"Inshan Thakur", reportingTo:"Karan Chopra", department:"Growth", totalReachouts:116, qualifiedLeads:1, qualifiedRatio:"0.86%", platform:"X, Telegram, LinkedIn, Twitter, Reddit, DeFiLlama", offering:"Instanodes", region:"MENA, Europe, North America", icp:"Funded Projects, Test net or main net phase", weeklyReachouts:100, weeklyLeadsRaw:"3 to 4", weeklyMeetingsRaw:"1 to 2", campaigns:"LinkedIn and Telegram", challenges:"Dependency on other work", industries:"L1, L2, Game Fi, Defi", responseMechanism:"3 to 4 responses received out of 30 calls/msgs sent"},
+  {name:"Sabby Singh", reportingTo:"Gaurav Sahni", department:"Sales", totalReachouts:250, qualifiedLeads:3, qualifiedRatio:"1.20%", platform:"Cloud AI", offering:"RWA, Upwork, APAC, Stable coin, Remittance rails, X402 Agentic payments, Roblox game, Metaverse, BFSI, Global fashion/beauty brands, CRM not-responded leads, Tier 3 exchanges/wallets, Social scan (X, LinkedIn), Y Combinator startups", region:"Global", icp:"Hiring news, AI adoption, RWA license companies", weeklyReachouts:30, weeklyLeadsRaw:"300", weeklyMeetingsRaw:"NA", campaigns:"Draft email campaign", challenges:"Sales Navigator not active", industries:"RWA, APAC, Stable coin, Remittance rails, X402 payments, Roblox, Metaverse, BFSI, Fashion/beauty, Tier 3 exchanges, YC startups", responseMechanism:"-"},
+  {name:"Rishav Gupta", reportingTo:"Swati Rana", department:"Gaming", totalReachouts:536, qualifiedLeads:4, qualifiedRatio:"0.75%", platform:"LinkedIn, Email", offering:"Gaming and Metaverse", region:"Global", icp:"Game development (mobile/PC/console/Telegram/iGaming), character art/3D/animation, Roblox & virtual worlds, XR/AR", weeklyReachouts:170, weeklyLeadsRaw:"1", weeklyMeetingsRaw:"2", campaigns:"LinkedIn", challenges:"Low profile availability", industries:"Game dev, character art/3D, Roblox/virtual worlds, XR/AR", responseMechanism:"3 to 4 responses received out of ~500 reachouts"},
+  {name:"Amandeep Kaur & Team", reportingTo:"Gaurav Sahni", department:"Sales", totalReachouts:3520, qualifiedLeads:30, qualifiedRatio:"0.85%", platform:"LinkedIn, Email", offering:"AI, Tokenization, Crypto payment gateway, Stable coin", region:"Global", icp:"ICP as per offering", weeklyReachouts:1100, weeklyLeadsRaw:"10", weeklyMeetingsRaw:"6", campaigns:"LinkedIn", challenges:"\u2014", industries:"AI, Tokenization, Crypto payment gateway, Stable coin", responseMechanism:"\u2014"}
+];
+
+var HEADER_MAP = {
+  name:["user name","name"], reportingTo:["reporting to"], department:["department"],
+  totalReachouts:["total reachouts"], qualifiedLeads:["qualified leads"], qualifiedRatio:["qualified lead ratio","ratio"],
+  platform:["platform"], offering:["offering"], region:["region"], icp:["ideal customer","icp"],
+  weeklyReachouts:["weekly reachouts"], weeklyLeadsRaw:["weekly leads"], weeklyMeetingsRaw:["weekly meeting"],
+  campaigns:["campaigns"], challenges:["challenges"], industries:["industries"], responseMechanism:["response mechanism"]
+};
+
+function parseCSV(text){
+  var rows = []; var row=[]; var field=""; var inQ=false;
+  for(var i=0;i<text.length;i++){
+    var c=text[i]; var n=text[i+1];
+    if(inQ){
+      if(c==='"' && n==='"'){field+='"';i++;}
+      else if(c==='"'){inQ=false;}
+      else field+=c;
+    } else {
+      if(c==='"') inQ=true;
+      else if(c===','){row.push(field);field="";}
+      else if(c==='\n'||c==='\r'){
+        if(c==='\r'&&n==='\n')i++;
+        row.push(field);field="";
+        if(row.some(function(x){return x.trim();})) rows.push(row);
+        row=[];
+      } else field+=c;
+    }
+  }
+  if(field.length||row.length){row.push(field);if(row.some(function(x){return x.trim();}))rows.push(row);}
+  if(rows.length<2) return [];
+  var headers = rows[0].map(function(h){return h.trim();});
+  return rows.slice(1).map(function(r){
+    var raw={};
+    headers.forEach(function(h,i){raw[h]=(r[i]||"").trim();});
+    var obj={};
+    Object.keys(HEADER_MAP).forEach(function(key){
+      var matches = HEADER_MAP[key];
+      var foundKey = Object.keys(raw).find(function(h){
+        return matches.some(function(m){return h.toLowerCase().indexOf(m)!==-1;});
+      });
+      obj[key] = foundKey ? raw[foundKey] : "";
+    });
+    obj.totalReachouts = parseFloat(obj.totalReachouts)||0;
+    obj.qualifiedLeads = parseFloat(obj.qualifiedLeads)||0;
+    obj.weeklyReachouts = parseFloat(obj.weeklyReachouts)||0;
+    return obj;
+  }).filter(function(o){ return o.name; });
+}
+
+function parseRangeAvg(v){
+  if(!v) return null;
+  var s = String(v).trim().toLowerCase();
+  if(!s || s==="na" || s==="n/a" || s==="-") return null;
+  if(s.indexOf("to")!==-1){
+    var parts = s.split("to").map(function(p){return parseFloat(p);});
+    if(parts.every(function(p){return !isNaN(p);})) return (parts[0]+parts[1])/2;
+  }
+  var n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+function escapeHtml(s){
+  return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function render(rows){
+  var departments = rows.map(function(r){return r.department;}).filter(Boolean);
+  departments = departments.filter(function(v,i){return departments.indexOf(v)===i;});
+  var platformList = [];
+  rows.forEach(function(r){(r.platform||"").split(",").forEach(function(p){var t=p.trim(); if(t && platformList.indexOf(t)===-1) platformList.push(t);});});
+  var totalReachouts = rows.reduce(function(s,r){return s+r.totalReachouts;},0);
+  var totalQualified = rows.reduce(function(s,r){return s+r.qualifiedLeads;},0);
+  var blendedRatio = totalReachouts ? (totalQualified/totalReachouts*100) : 0;
+  var weeklyReachouts = rows.reduce(function(s,r){return s+r.weeklyReachouts;},0);
+  var meetingVals = rows.map(function(r){return parseRangeAvg(r.weeklyMeetingsRaw);}).filter(function(v){return v!==null;});
+  var weeklyMeetings = meetingVals.reduce(function(s,v){return s+v;},0);
+  var excludedNames = rows.filter(function(r){return parseRangeAvg(r.weeklyMeetingsRaw)===null;}).map(function(r){return r.name;});
+
+  document.getElementById("oe-snapshot").innerHTML = "Data snapshot: <b>"+rows.length+" contributors &middot; "+departments.length+" departments</b>";
+  document.getElementById("oe-channels").innerHTML = "Platforms: <b>"+(escapeHtml(platformList.slice(0,8).join(", "))||"&mdash;")+"</b>";
+
+  var kpis = [
+    {label:"Total reachouts (all-time)", value:totalReachouts.toLocaleString(), sub:"across "+rows.length+" contributors"},
+    {label:"Total qualified leads", value:totalQualified.toLocaleString(), sub:"all-time"},
+    {label:"Blended lead ratio", value:blendedRatio.toFixed(2)+"%", sub:totalQualified+" / "+totalReachouts, accent:true},
+    {label:"Conversion", value:"0", sub:"qualified \u2192 closed, none yet", accent:true},
+    {label:"Weekly reachouts", value:"~"+weeklyReachouts.toLocaleString(), sub:"current run-rate"},
+    {label:"Weekly meetings (approx.)", value:"~"+Math.round(weeklyMeetings), sub: excludedNames.length ? "excludes "+escapeHtml(excludedNames.join(", "))+" \u2014 reported N/A" : "all contributors reporting"}
+  ];
+  document.getElementById("oe-kpis").innerHTML = kpis.map(function(k){
+    return '<div class="oe-kpi"><div class="oe-kpi-label">'+k.label+'</div><div class="oe-kpi-value'+(k.accent?' accent':'')+'">'+k.value+'</div><div class="oe-kpi-sub">'+k.sub+'</div></div>';
+  }).join("");
+
+  var sorted = rows.slice().sort(function(a,b){return b.totalReachouts-a.totalReachouts;});
+  var sharedMax = Math.max.apply(null, [1].concat(sorted.map(function(r){return r.totalReachouts;})));
+  document.getElementById("oe-contributors").innerHTML = sorted.map(function(r){
+    var firstPlatform = (r.platform||"").split(",")[0].trim();
+    return '<div class="oe-contrib">'
+      + '<div class="oe-contrib-name">'+escapeHtml(r.name)+' <span style="font-weight:400;font-family:\'IBM Plex Mono\',monospace;">('+escapeHtml(firstPlatform)+')</span></div>'
+      + '<div class="oe-contrib-dept">'+escapeHtml(r.department)+' &middot; reports to '+escapeHtml(r.reportingTo)+'</div>'
+      + '<div class="oe-bar-row"><div class="oe-bar-label">Reachouts</div><div class="oe-bar-track"><div class="oe-bar-fill" style="width:'+(r.totalReachouts/sharedMax*100)+'%;background:#1D9E75"></div></div><div class="oe-bar-value">'+r.totalReachouts.toLocaleString()+'</div></div>'
+      + '<div class="oe-bar-row"><div class="oe-bar-label">Qualified</div><div class="oe-bar-track"><div class="oe-bar-fill" style="width:'+(r.qualifiedLeads/sharedMax*100)+'%;background:#D85A30"></div></div><div class="oe-bar-value">'+r.qualifiedLeads+'</div></div>'
+      + '<div class="oe-bar-row"><div class="oe-bar-label">Conversion</div><div class="oe-bar-track"><div class="oe-bar-fill" style="width:0%;background:#993C1D"></div></div><div class="oe-bar-value">0</div></div>'
+      + '</div>';
+  }).join("");
+
+  var weeklyCols = ["Contributor","Weekly reachouts","Weekly leads gen.","Weekly meetings","Best campaign"];
+  var wt = "<tr>"+weeklyCols.map(function(c){return "<th>"+c+"</th>";}).join("")+"</tr>";
+  rows.forEach(function(r){
+    wt += "<tr><td>"+escapeHtml(r.name)+"</td><td>"+r.weeklyReachouts.toLocaleString()+"</td><td>"+escapeHtml(r.weeklyLeadsRaw||"\u2014")+"</td><td>"+escapeHtml(r.weeklyMeetingsRaw||"\u2014")+"</td><td>"+escapeHtml(r.campaigns||"\u2014")+"</td></tr>";
+  });
+  document.getElementById("oe-weekly").innerHTML = wt;
+
+  document.getElementById("oe-coverage").innerHTML = rows.map(function(r){
+    return '<div class="oe-card">'
+      + '<div class="oe-card-name">'+escapeHtml(r.name)+'</div>'
+      + '<div class="oe-card-role">'+escapeHtml(r.department)+' &middot; '+escapeHtml(r.region)+'</div>'
+      + '<div class="oe-card-row"><b>Platform</b>'+escapeHtml(r.platform||"\u2014")+'</div>'
+      + '<div class="oe-card-row"><b>Offering</b>'+escapeHtml(r.offering||"\u2014")+'</div>'
+      + '<div class="oe-card-row"><b>ICP</b>'+escapeHtml(r.icp||"\u2014")+'</div>'
+      + '</div>';
+  }).join("");
+
+  var notesCols = ["Contributor","Best campaign","Challenges","Response signal"];
+  var nt = "<tr>"+notesCols.map(function(c){return "<th>"+c+"</th>";}).join("")+"</tr>";
+  rows.forEach(function(r){
+    nt += "<tr><td>"+escapeHtml(r.name)+"</td><td>"+escapeHtml(r.campaigns||"\u2014")+"</td><td>"+escapeHtml(r.challenges||"\u2014")+"</td><td>"+escapeHtml(r.responseMechanism||"\u2014")+"</td></tr>";
+  });
+  document.getElementById("oe-notes").innerHTML = nt;
+
+  var compCols = ["User","Reports to","Dept","Reachouts","Qualified","Ratio","Conversion","Weekly reachouts","Weekly leads","Weekly meetings"];
+  var ct = "<tr>"+compCols.map(function(c){return "<th>"+c+"</th>";}).join("")+"</tr>";
+  rows.forEach(function(r){
+    ct += "<tr>"
+      + "<td>"+escapeHtml(r.name)+"</td>"
+      + "<td>"+escapeHtml(r.reportingTo||"\u2014")+"</td>"
+      + "<td>"+escapeHtml(r.department||"\u2014")+"</td>"
+      + "<td>"+r.totalReachouts.toLocaleString()+"</td>"
+      + "<td>"+r.qualifiedLeads+"</td>"
+      + "<td>"+escapeHtml(r.qualifiedRatio||"\u2014")+"</td>"
+      + "<td style=\"color:#B8461E;font-weight:600;\">0</td>"
+      + "<td>"+r.weeklyReachouts.toLocaleString()+"</td>"
+      + "<td>"+escapeHtml(r.weeklyLeadsRaw||"\u2014")+"</td>"
+      + "<td>"+escapeHtml(r.weeklyMeetingsRaw||"\u2014")+"</td>"
+      + "</tr>";
+  });
+  document.getElementById("oe-comparison").innerHTML = ct;
+}
+
+function setStatus(msg, kind){
+  var el = document.getElementById("oe-status");
+  if(!msg){ el.style.display="none"; return; }
+  el.textContent = msg;
+  el.className = "oe-status " + (kind || "");
+  el.style.display = "block";
+}
+
+render(SAMPLE_ROWS);
+
+var loadBtn = document.getElementById("oe-load");
+loadBtn.addEventListener("click", function(){
+  var url = document.getElementById("oe-url").value.trim();
+  if(!url){ setStatus("Paste your published Google Sheet CSV link first.", "error"); return; }
+  loadBtn.disabled = true;
+  loadBtn.textContent = "Loading…";
+  setStatus("Fetching sheet…", "");
+  fetch(url)
+    .then(function(res){
+      if(!res.ok) throw new Error("Request failed with status " + res.status);
+      return res.text();
+    })
+    .then(function(text){
+      var parsed = parseCSV(text);
+      if(!parsed.length) throw new Error("Parsed 0 rows — check the sheet has a header row plus data rows, and that headers roughly match the expected column names.");
+      render(parsed);
+      setStatus("Connected — showing " + parsed.length + " live rows.", "ok");
+    })
+    .catch(function(e){
+      setStatus("Couldn't load sheet: " + e.message, "error");
+    })
+    .finally(function(){
+      loadBtn.disabled = false;
+      loadBtn.textContent = "Connect sheet";
+    });
+});
+</script>
+</body>
+</html>
