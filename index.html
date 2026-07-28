@@ -246,6 +246,13 @@
       <div class="filter-label">Financial Year (Apr–Mar)</div>
       <div class="tab-set" id="fyTabs"></div>
     </div>
+    <div class="filter-group">
+      <div class="filter-label">Sales Person</div>
+      <div class="tab-set" id="salesPersonTabs">
+        <button data-val="All" class="active" onclick="setSalesPersonFilter('All')">All</button>
+        <button data-val="Active" onclick="setSalesPersonFilter('Active')">Active Only</button>
+      </div>
+    </div>
   </div>
 
   <main>
@@ -266,14 +273,24 @@
         <div class="kpi-value" id="kpiPipeline">—</div>
         <div class="kpi-sub"><span id="kpiPipelineCount">—</span> open opportunities</div>
       </div>
+      <div class="kpi" style="--accent:var(--blue)">
+        <div class="kpi-label">Unique Clients (New)</div>
+        <div class="kpi-value" id="kpiUniqueClients">—</div>
+        <div class="kpi-sub">Distinct clients where Cx Category = "New"</div>
+      </div>
+      <div class="kpi" style="--accent:var(--orange)">
+        <div class="kpi-label">Kick-off % Ratio</div>
+        <div class="kpi-value" id="kpiKickoffPct">—</div>
+        <div class="kpi-sub">Fresh receipts collected vs Fresh booked, company-wide</div>
+      </div>
     </div>
 
     <div class="section">
       <div class="section-head">
         <div><span class="section-title">Bookings vs Pipeline — by Sales Person</span><span class="live-pill">Live</span></div>
         <div class="section-note">
-          <span class="legend-dot" style="background:var(--orange)"></span>Booking
-          <span class="legend-dot" style="background:var(--teal); margin-left:14px;"></span>Pipeline (Proposal Shared)
+          <span class="legend-dot" style="background:#1E824C"></span>Booking (Achieved)
+          <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Pipeline (Projection)
         </div>
       </div>
       <div class="section-desc">All active sales reps shown, including those with $0 booking or pipeline in the current filter.</div>
@@ -309,8 +326,8 @@
       <div class="section-head">
         <div><span class="section-title">Projection by Delivery Head — EWMS</span><span class="live-pill">Live</span></div>
         <div class="section-note">
-          <span class="legend-dot" style="background:var(--teal)"></span>Received
-          <span class="legend-dot" style="background:var(--orange); margin-left:14px;"></span>Pending
+          <span class="legend-dot" style="background:#1E824C"></span>Received
+          <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Pending
           <span id="ewmsQuarterLabel" style="margin-left:14px;"></span>
         </div>
       </div>
@@ -337,6 +354,9 @@ const EWMS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp
 let chartSales, chartReceipts, chartEwms, chartKickoff;
 let rawBookingRows = [], rawPipelineRows = [], rawEwmsRows = [];
 let selectedQuarter = 'All', selectedFY = 'All';
+let salesPersonFilter = 'All'; // 'All' | 'Active'
+const ACTIVE_SALES_PERSONS = ['Arun', 'Gurmukh', 'Sunil', 'Gaurav', 'Bhaskar', 'Jasvinder', 'Daljinder', 'Rajeev', 'Nitin Sokhey'];
+const ACTIVE_SALES_PERSONS_LC = ACTIVE_SALES_PERSONS.map(n => n.toLowerCase());
 let currentCurrency = 'USD';
 let exchangeRate = 84.0;
 
@@ -377,6 +397,13 @@ function parseNum(v){
 }
 function uniqueNonEmpty(values){
   return Array.from(new Set(values.map(v => (v||'').trim()).filter(Boolean)));
+}
+function getSalesRoster(){
+  const all = uniqueNonEmpty(rawBookingRows.map(r => r["Sales Person"]));
+  if (salesPersonFilter === 'Active') {
+    return all.filter(n => ACTIVE_SALES_PERSONS_LC.includes(n.toLowerCase()));
+  }
+  return all;
 }
 
 // ---------- Fetching ----------
@@ -463,9 +490,11 @@ function buildFilterTabs(bookingRows){
 
 function setQuarter(q){ selectedQuarter = q; refreshTabStyles(); applyBookingFilter(); }
 function setFY(fy){ selectedFY = fy; refreshTabStyles(); applyBookingFilter(); }
+function setSalesPersonFilter(v){ salesPersonFilter = v; refreshTabStyles(); applyBookingFilter(); }
 function refreshTabStyles(){
   document.querySelectorAll('#quarterTabs button').forEach(b => b.classList.toggle('active', b.dataset.val === selectedQuarter));
   document.querySelectorAll('#fyTabs button').forEach(b => b.classList.toggle('active', b.dataset.val === selectedFY));
+  document.querySelectorAll('#salesPersonTabs button').forEach(b => b.classList.toggle('active', b.dataset.val === salesPersonFilter));
 }
 
 function applyBookingFilter(){
@@ -475,11 +504,38 @@ function applyBookingFilter(){
     const quarterToken = quarterStr.split(" ")[0];
     const quarterOk = selectedQuarter === 'All' || quarterToken === selectedQuarter;
     const fyOk = selectedFY === 'All' || fyStr === selectedFY;
-    return quarterOk && fyOk;
+    const sp = (row["Sales Person"] || "").trim().toLowerCase();
+    const spOk = salesPersonFilter === 'All' || ACTIVE_SALES_PERSONS_LC.includes(sp);
+    return quarterOk && fyOk && spOk;
   });
   renderBookingsPipelineAndReceipts(filtered, rawPipelineRows);
   renderKickoffChart(filtered);
   renderSalesPerformanceTable(filtered);
+  renderExtraKpis(filtered);
+}
+
+function renderExtraKpis(bookingRows){
+  // Unique Client: distinct Client Name where Cx Category = "New"
+  const newClientNames = new Set();
+  bookingRows.forEach(row => {
+    const cx = (row["Cx Category"] || "").trim().toLowerCase();
+    const client = (row["Client Name"] || "").trim();
+    if (cx === 'new' && client) newClientNames.add(client.toLowerCase());
+  });
+  document.getElementById('kpiUniqueClients').textContent = newClientNames.size;
+
+  // Overall Kick-off % (same methodology as the Kick-off chart, company-wide)
+  let totalFresh = 0, totalKickoff = 0;
+  bookingRows.forEach(row => {
+    const category = (row["Sales Category"] || "").toLowerCase().trim();
+    if (category.includes('milestone')) return;
+    if (category === 'fresh') {
+      totalFresh += parseNum(row["Booking"]);
+      totalKickoff += parseNum(row["Receipt Amount"]);
+    }
+  });
+  const kickoffPct = totalFresh > 0 ? (totalKickoff/totalFresh*100) : 0;
+  document.getElementById('kpiKickoffPct').textContent = kickoffPct.toFixed(0) + '%';
 }
 
 async function loadEwms(){
@@ -579,7 +635,7 @@ function chartOptions(horizontal, axisType, extraBottomPadding){
 
 function datalabelConfig(isPercent, color){
   return {
-    display: (ctx) => ctx.dataset.data[ctx.dataIndex] !== 0,
+    display: true,
     anchor: 'end',
     align: 'end',
     color: color || '#14171F',
@@ -620,9 +676,9 @@ function renderBookingsPipelineAndReceipts(bookingRows, pipelineRows){
     pipelineByNorm[normName(owner)] = (pipelineByNorm[normName(owner)] || 0) + val;
   });
 
-  // Full roster = everyone who ever appears as a Sales Person anywhere in the
-  // raw (unfiltered) data, so reps with $0 in the current filter still show.
-  const salesRoster = uniqueNonEmpty(rawBookingRows.map(r => r["Sales Person"]))
+  // Roster respects the Sales Person filter (All / Active Only), and always
+  // includes every rep in scope even at $0, so nobody silently disappears.
+  const salesRoster = getSalesRoster()
     .sort((a,b) => (bookingBySales[b]||0) - (bookingBySales[a]||0));
   const bookingVals = salesRoster.map(n => bookingBySales[n] || 0);
   const pipelineVals = salesRoster.map(n => pipelineByNorm[normName(n)] || 0);
@@ -644,8 +700,8 @@ function renderBookingsPipelineAndReceipts(bookingRows, pipelineRows){
     data: {
       labels: salesRoster,
       datasets: [
-        { label: 'Booking', data: bookingVals, backgroundColor: (c) => barGradient(c, '#E8B08E', '#C1653D'), borderRadius: 5, maxBarThickness: 18, datalabels: datalabelConfig(false, '#C1653D') },
-        { label: 'Pipeline (Proposal Shared)', data: pipelineVals, backgroundColor: (c) => barGradient(c, '#8FD9C9', '#2F8F7C'), borderRadius: 5, maxBarThickness: 18, datalabels: datalabelConfig(false, '#2F8F7C') }
+        { label: 'Booking (Achieved)', data: bookingVals, backgroundColor: (c) => barGradient(c, '#A8E6C3', '#1E824C'), borderRadius: 5, maxBarThickness: 18, datalabels: datalabelConfig(false, '#1E824C') },
+        { label: 'Pipeline (Projection)', data: pipelineVals, backgroundColor: (c) => barGradient(c, '#F5B7B1', '#C0392B'), borderRadius: 5, maxBarThickness: 18, datalabels: datalabelConfig(false, '#C0392B') }
       ]
     },
     options: chartOptions(true, 'money')
@@ -673,7 +729,7 @@ function renderBookingsPipelineAndReceipts(bookingRows, pipelineRows){
 
 // ---------- Kick-off % chart ----------
 function renderKickoffChart(bookingRows){
-  const salesRoster = uniqueNonEmpty(rawBookingRows.map(r => r["Sales Person"]));
+  const salesRoster = getSalesRoster();
   const freshBooking = {}, kickoffReceipt = {};
   salesRoster.forEach(n => { freshBooking[n] = 0; kickoffReceipt[n] = 0; });
 
@@ -690,10 +746,9 @@ function renderKickoffChart(bookingRows){
     }
   });
 
-  const roster = salesRoster.filter(n => freshBooking[n] > 0 || kickoffReceipt[n] > 0);
-  const pct = roster.map(n => freshBooking[n] > 0 ? Math.min(100, (kickoffReceipt[n] / freshBooking[n]) * 100) : 0);
-  const sortedIdx = roster.map((n,i) => i).sort((a,b) => pct[b]-pct[a]);
-  const sortedRoster = sortedIdx.map(i => roster[i]);
+  const pct = salesRoster.map(n => freshBooking[n] > 0 ? Math.min(100, (kickoffReceipt[n] / freshBooking[n]) * 100) : 0);
+  const sortedIdx = salesRoster.map((n,i) => i).sort((a,b) => pct[b]-pct[a]);
+  const sortedRoster = sortedIdx.map(i => salesRoster[i]);
   const sortedPct = sortedIdx.map(i => pct[i]);
 
   const totalFresh = Object.values(freshBooking).reduce((a,b)=>a+b,0);
@@ -717,7 +772,7 @@ function renderKickoffChart(bookingRows){
 
 // ---------- Sales performance table ----------
 function renderSalesPerformanceTable(bookingRows){
-  const salesRoster = uniqueNonEmpty(rawBookingRows.map(r => r["Sales Person"]));
+  const salesRoster = getSalesRoster();
   const data = {};
   salesRoster.forEach(n => { data[n] = { fresh: 0, crossell: 0, upsell: 0 }; });
 
@@ -787,8 +842,8 @@ function renderEwms(rows){
     data: {
       labels: deliveryRoster,
       datasets: [
-        { label: 'Received', data: deliveryRoster.map(h => byHead[h]?.received || 0), backgroundColor: (c) => barGradient(c, '#8FD9C9', '#2F8F7C'), borderRadius: 5, maxBarThickness: 18, stack: 's' },
-        { label: 'Pending', data: deliveryRoster.map(h => byHead[h]?.pending || 0), backgroundColor: (c) => barGradient(c, '#E8B08E', '#C1653D'), borderRadius: 5, maxBarThickness: 18, stack: 's' }
+        { label: 'Received', data: deliveryRoster.map(h => byHead[h]?.received || 0), backgroundColor: (c) => barGradient(c, '#A8E6C3', '#1E824C'), borderRadius: 5, maxBarThickness: 18, stack: 's', datalabels: { display: true, anchor: 'center', align: 'center', color: '#fff', font: { family: 'JetBrains Mono', size: 9 }, formatter: (v) => fmtCurrencyShort(v) } },
+        { label: 'Pending', data: deliveryRoster.map(h => byHead[h]?.pending || 0), backgroundColor: (c) => barGradient(c, '#F5B7B1', '#C0392B'), borderRadius: 5, maxBarThickness: 18, stack: 's', datalabels: { display: true, anchor: 'center', align: 'center', color: '#fff', font: { family: 'JetBrains Mono', size: 9 }, formatter: (v) => fmtCurrencyShort(v) } }
       ]
     },
     options: { ...opts, scales: { ...opts.scales, x: { ...opts.scales.x, stacked: true }, y: { ...opts.scales.y, stacked: true } } }
