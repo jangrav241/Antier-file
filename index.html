@@ -6,6 +6,7 @@
 <title>Antier · Sales &amp; Pipeline Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -19,8 +20,13 @@
     --teal: #2F8F7C;
     --orange: #C1653D;
     --red: #C0392B;
+    --amber: #B7791F;
     --green-pill-bg: #E7F5EC;
     --green-pill-text: #1E824C;
+    --amber-pill-bg: #FDF3E3;
+    --amber-pill-text: #9A6A0C;
+    --red-pill-bg: #FBEAEA;
+    --red-pill-text: #B03434;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   body{
@@ -32,7 +38,7 @@
   }
 
   header{
-    padding:28px 40px 20px;
+    padding:24px 40px 16px;
     border-bottom:1px solid var(--border);
     background:var(--panel);
   }
@@ -58,6 +64,7 @@
     align-items:flex-end;
     flex-wrap:wrap;
     gap:16px;
+    margin-bottom:16px;
   }
   .meta{ text-align:right; font-size:12.5px; color:var(--muted); }
   .refresh-btn{
@@ -76,6 +83,23 @@
   .refresh-btn:hover{ border-color:var(--blue); background:#F7F8FF; }
   .refresh-btn:focus-visible{ outline:2px solid var(--blue); outline-offset:2px; }
 
+  .currency-bar{
+    display:flex;
+    gap:14px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  .fx-input{
+    display:flex; align-items:center; gap:6px;
+    border:1px solid var(--border); border-radius:8px; padding:6px 10px;
+    font-family:'JetBrains Mono', monospace; font-size:12.5px; background:var(--panel);
+  }
+  .fx-input input{
+    width:60px; border:none; font-family:'JetBrains Mono', monospace; font-size:12.5px;
+    background:transparent; color:var(--text);
+  }
+  .fx-input input:focus{ outline:none; }
+
   .filter-bar{
     display:flex;
     gap:28px;
@@ -93,15 +117,10 @@
   .tab-set button{
     border:none; background:transparent; color:var(--muted);
     font-family:'Inter', sans-serif; font-size:13px; font-weight:500;
-    padding:6px 14px; border-radius:7px; cursor:pointer; transition:all 0.12s;
+    padding:6px 14px; border-radius:7px; cursor:pointer; transition:all 0.12s; white-space:nowrap;
   }
   .tab-set button:hover{ color:var(--text); }
   .tab-set button.active{ background:var(--text); color:#fff; }
-  .filter-group select{
-    background:var(--panel); border:1px solid var(--border); color:var(--text);
-    font-family:'Inter', sans-serif; font-size:13px; padding:7px 10px; border-radius:8px;
-    min-width:120px; cursor:pointer;
-  }
 
   main{ padding:32px 40px; max-width:1400px; margin:0 auto; }
 
@@ -126,8 +145,8 @@
   .kpi-label{
     font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; font-weight:600; margin-bottom:10px;
   }
-  .kpi-value{ font-family:'Space Grotesk', sans-serif; font-size:27px; font-weight:600; }
-  .kpi-sub{ font-size:12.5px; color:var(--muted); margin-top:6px; }
+  .kpi-value{ font-family:'Space Grotesk', sans-serif; font-size:25px; font-weight:600; }
+  .kpi-sub{ font-size:12.5px; color:var(--muted); margin-top:6px; line-height:1.4; }
 
   .section{
     background:var(--panel);
@@ -138,9 +157,10 @@
   }
   .section-head{
     display:flex; justify-content:space-between; align-items:center;
-    margin-bottom:18px; flex-wrap:wrap; gap:12px;
+    margin-bottom:6px; flex-wrap:wrap; gap:12px;
   }
   .section-title{ font-family:'Space Grotesk', sans-serif; font-size:17px; font-weight:600; }
+  .section-desc{ font-size:12.5px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
   .live-pill{
     display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600;
     background:var(--green-pill-bg); color:var(--green-pill-text); padding:3px 9px; border-radius:20px;
@@ -149,7 +169,14 @@
   .live-pill::before{ content:''; width:6px; height:6px; border-radius:50%; background:var(--green-pill-text); }
   .section-note{ font-size:12px; color:var(--muted); }
   .legend-dot{ display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; }
-  .chart-wrap{ position:relative; height:280px; }
+
+  .chart-scroll{
+    max-height:460px;
+    overflow-y:auto;
+  }
+  .chart-scroll::-webkit-scrollbar{ width:7px; }
+  .chart-scroll::-webkit-scrollbar-thumb{ background:#D5D9E0; border-radius:4px; }
+  .chart-wrap{ position:relative; }
 
   .placeholder-card{
     border:1px dashed var(--border); border-radius:10px; padding:22px; text-align:center;
@@ -157,7 +184,26 @@
   }
   .placeholder-card b{ color:var(--orange); }
 
+  table.data-table{ width:100%; border-collapse:collapse; font-size:13px; }
+  table.data-table th{
+    text-align:right; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;
+    padding:8px 10px; border-bottom:1px solid var(--border); font-weight:600;
+  }
+  table.data-table th:first-child, table.data-table td:first-child{ text-align:left; }
+  table.data-table td{ padding:8px 10px; border-bottom:1px solid #F0F1F3; text-align:right; }
+  table.data-table tr.total-row td{ font-weight:700; border-top:2px solid var(--border); border-bottom:none; }
+  table.data-table tr.owner-row td{ background:#FAFAFB; font-weight:600; }
+
+  .status-pill{ display:inline-block; font-size:11px; font-weight:600; padding:3px 9px; border-radius:20px; }
+  .status-fresh{ background:var(--green-pill-bg); color:var(--green-pill-text); }
+  .status-aging{ background:var(--amber-pill-bg); color:var(--amber-pill-text); }
+  .status-stale{ background:var(--red-pill-bg); color:var(--red-pill-text); }
+
   ::selection{ background:var(--blue); color:#fff; }
+
+  @media print{
+    .filter-bar, .refresh-btn, .currency-bar{ display:none !important; }
+  }
 
   @media (max-width:640px){
     header, main, .filter-bar{ padding-left:20px; padding-right:20px; }
@@ -177,6 +223,17 @@
         <div id="lastRefreshed">Loading…</div>
         <button class="refresh-btn" onclick="loadAll()">↻ Refresh now</button>
       </div>
+    </div>
+    <div class="currency-bar">
+      <div class="fx-input">
+        <span>$1=₹</span>
+        <input id="fxRateInput" type="number" step="0.1" value="84.0" onchange="setExchangeRate(this.value)">
+      </div>
+      <div class="tab-set" id="currencyToggle">
+        <button data-val="INR" onclick="setCurrency('INR')">₹ INR</button>
+        <button data-val="USD" class="active" onclick="setCurrency('USD')">$ USD</button>
+      </div>
+      <button class="refresh-btn" onclick="window.print()">Print / PDF</button>
     </div>
   </header>
 
@@ -219,7 +276,24 @@
           <span class="legend-dot" style="background:var(--teal); margin-left:14px;"></span>Pipeline (Proposal Shared)
         </div>
       </div>
-      <div class="chart-wrap"><canvas id="chartSales"></canvas></div>
+      <div class="section-desc">All active sales reps shown, including those with $0 booking or pipeline in the current filter.</div>
+      <div class="chart-scroll"><div class="chart-wrap" id="salesChartWrap"><canvas id="chartSales"></canvas></div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <div><span class="section-title">Kick-off Rate by Rep</span><span class="live-pill">Live</span></div>
+      </div>
+      <div class="section-desc">Share of Fresh booking value already collected as the kick-off payment (the receipt logged on the same row as the booking). Dashed line = company-wide average.</div>
+      <div class="chart-scroll"><div class="chart-wrap" id="kickoffChartWrap"><canvas id="chartKickoff"></canvas></div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <div><span class="section-title">Sales Performance — Fresh / Crossell / Upsell</span><span class="live-pill">Live</span></div>
+      </div>
+      <div class="section-desc">Booking value by category per sales person. Milestone payments are excluded (recurring, not new business).</div>
+      <div id="salesPerfTableWrap" class="chart-scroll"></div>
     </div>
 
     <div class="section">
@@ -227,7 +301,8 @@
         <div><span class="section-title">Receipts by Delivery Head</span><span class="live-pill">Live</span></div>
         <div class="section-note"><span class="legend-dot" style="background:var(--blue)"></span>Receipt collected</div>
       </div>
-      <div class="chart-wrap"><canvas id="chartReceipts"></canvas></div>
+      <div class="section-desc">All active delivery heads shown, including those with $0 receipts in the current filter.</div>
+      <div class="chart-scroll"><div class="chart-wrap" id="receiptsChartWrap"><canvas id="chartReceipts"></canvas></div></div>
     </div>
 
     <div class="section">
@@ -240,7 +315,16 @@
         </div>
       </div>
       <div id="ewmsErrorCard" class="placeholder-card" style="display:none;"></div>
-      <div class="chart-wrap" id="ewmsChartWrap"><canvas id="chartEwms"></canvas></div>
+      <div class="chart-scroll"><div class="chart-wrap" id="ewmsChartWrap"><canvas id="chartEwms"></canvas></div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <div><span class="section-title">Open Pipeline — Leads at "Proposal Shared"</span><span class="live-pill">Live</span></div>
+      </div>
+      <div class="section-desc">LeadSquared CRM · grouped by Lead Owner · Age = days since lead was created. Status: Fresh ≤90d, Aging 91–180d, Stale &gt;180d.</div>
+      <div class="kpi-row" id="pipelineKpiRow" style="margin-bottom:16px;"></div>
+      <div id="pipelineTableWrap" class="chart-scroll"></div>
     </div>
 
   </main>
@@ -248,17 +332,18 @@
 <script>
 const BOOKINGS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=456245453&single=true&output=csv";
 const PIPELINE_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=682382270&single=true&output=csv";
-
-// EWMS data now comes from a Google Sheet tab (EWMS_Projection), kept fresh
-// by a script run manually/on a schedule inside the office network — the
-// direct API call from the public dashboard was blocked (403) since EWMS
-// only allows requests from known internal IPs.
 const EWMS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=249659915&single=true&output=csv";
 
-let chartSales, chartReceipts, chartEwms;
-let rawBookingRows = [], rawPipelineRows = [];
+let chartSales, chartReceipts, chartEwms, chartKickoff;
+let rawBookingRows = [], rawPipelineRows = [], rawEwmsRows = [];
 let selectedQuarter = 'All', selectedFY = 'All';
+let currentCurrency = 'USD';
+let exchangeRate = 84.0;
 
+Chart.register(ChartDataLabels);
+Chart.defaults.set('plugins.datalabels', { display: false });
+
+// ---------- Formatting ----------
 function fmtMoney(n){
   if (!isFinite(n)) return "$0";
   const abs = Math.abs(n);
@@ -266,7 +351,20 @@ function fmtMoney(n){
   if (abs >= 1_000) return "$" + (n/1_000).toFixed(1) + "K";
   return "$" + n.toFixed(0);
 }
-function fmtFull(n){ return "$" + Math.round(n).toLocaleString("en-US"); }
+function fmtINRShort(n){
+  const abs = Math.abs(n);
+  if (abs >= 1e7) return "₹" + (n/1e7).toFixed(2) + " Cr";
+  if (abs >= 1e5) return "₹" + (n/1e5).toFixed(2) + " L";
+  return "₹" + Math.round(n).toLocaleString("en-IN");
+}
+function fmtCurrencyShort(usdVal){
+  if (currentCurrency === 'USD') return fmtMoney(usdVal);
+  return fmtINRShort(usdVal * exchangeRate);
+}
+function fmtCurrencyFull(usdVal){
+  if (currentCurrency === 'USD') return "$" + Math.round(usdVal).toLocaleString("en-US");
+  return "₹" + Math.round(usdVal * exchangeRate).toLocaleString("en-IN");
+}
 function normName(name){
   if (!name) return "";
   return name.trim().toLowerCase().split(/\s+/)[0];
@@ -277,7 +375,11 @@ function parseNum(v){
   const n = parseFloat(cleaned);
   return isNaN(n) ? 0 : n;
 }
+function uniqueNonEmpty(values){
+  return Array.from(new Set(values.map(v => (v||'').trim()).filter(Boolean)));
+}
 
+// ---------- Fetching ----------
 async function fetchCsv(url){
   const response = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
   if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
@@ -298,6 +400,24 @@ function showError(message){
   box.textContent = message;
 }
 
+// ---------- Currency toggle ----------
+function setCurrency(c){
+  currentCurrency = c;
+  document.querySelectorAll('#currencyToggle button').forEach(b => b.classList.toggle('active', b.dataset.val === c));
+  reRenderAll();
+}
+function setExchangeRate(v){
+  const parsed = parseFloat(v);
+  exchangeRate = isNaN(parsed) ? 84 : parsed;
+  if (currentCurrency === 'INR') reRenderAll();
+}
+function reRenderAll(){
+  applyBookingFilter();
+  if (rawEwmsRows.length) renderEwms(rawEwmsRows);
+  if (rawPipelineRows.length) renderPipelineSection(rawPipelineRows);
+}
+
+// ---------- Load ----------
 async function loadAll(){
   document.getElementById('lastRefreshed').textContent = "Refreshing…";
   const existingError = document.getElementById('errorBox');
@@ -312,6 +432,7 @@ async function loadAll(){
     rawPipelineRows = pipelineRows;
     buildFilterTabs(bookingRows);
     applyBookingFilter();
+    renderPipelineSection(pipelineRows);
     const now = new Date();
     document.getElementById('lastRefreshed').textContent =
       "Last refreshed " + now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) + " · " + now.toLocaleDateString();
@@ -323,12 +444,9 @@ async function loadAll(){
   await loadEwms();
 }
 
-// Builds the Quarter (Q1-Q4) and Financial Year tab buttons from the data.
-// The sheet's "Quarter" column looks like "Q1 FY 2025-2026" and the "FY"
-// column looks like "2025-2026" — we split these into two independent filters.
 function buildFilterTabs(bookingRows){
   const quarters = ['All', 'Q1', 'Q2', 'Q3', 'Q4'];
-  const fyValues = Array.from(new Set(bookingRows.map(r => (r["FY"] || "").trim()).filter(Boolean))).sort();
+  const fyValues = uniqueNonEmpty(bookingRows.map(r => r["FY"])).sort();
   const fys = ['All', ...fyValues];
 
   const qContainer = document.getElementById('quarterTabs');
@@ -352,24 +470,27 @@ function refreshTabStyles(){
 
 function applyBookingFilter(){
   const filtered = rawBookingRows.filter(row => {
-    const quarterStr = (row["Quarter"] || "").trim(); // e.g. "Q1 FY 2025-2026"
-    const fyStr = (row["FY"] || "").trim();            // e.g. "2025-2026"
-    const quarterToken = quarterStr.split(" ")[0];      // "Q1"
+    const quarterStr = (row["Quarter"] || "").trim();
+    const fyStr = (row["FY"] || "").trim();
+    const quarterToken = quarterStr.split(" ")[0];
     const quarterOk = selectedQuarter === 'All' || quarterToken === selectedQuarter;
     const fyOk = selectedFY === 'All' || fyStr === selectedFY;
     return quarterOk && fyOk;
   });
-  render(filtered, rawPipelineRows);
+  renderBookingsPipelineAndReceipts(filtered, rawPipelineRows);
+  renderKickoffChart(filtered);
+  renderSalesPerformanceTable(filtered);
 }
 
 async function loadEwms(){
   try {
     const rows = await fetchCsv(EWMS_CSV);
+    rawEwmsRows = rows;
     renderEwms(rows);
   } catch (err) {
     console.error('EWMS fetch failed:', err);
     const card = document.getElementById('ewmsErrorCard');
-    const wrap = document.getElementById('ewmsChartWrap');
+    const wrap = document.getElementById('ewmsChartWrap').closest('.chart-scroll');
     card.style.display = 'block';
     wrap.style.display = 'none';
     card.innerHTML = `Could not load EWMS data: <b>${err.message || err}</b><br>`
@@ -377,8 +498,7 @@ async function loadEwms(){
   }
 }
 
-// Creates a horizontal gradient across the plotted bar area, used to match
-// the teal-to-orange gradient bar style from the reference dashboard.
+// ---------- Chart helpers ----------
 function barGradient(context, colorStart, colorEnd){
   const { chart } = context;
   const { ctx, chartArea } = chart;
@@ -389,9 +509,253 @@ function barGradient(context, colorStart, colorEnd){
   return gradient;
 }
 
+const avgLinePlugin = {
+  id: 'avgLine',
+  afterDraw(chart, args, opts){
+    if (!opts || opts.value === undefined) return;
+    const { ctx, chartArea, scales } = chart;
+    const xPix = scales.x.getPixelForValue(opts.value);
+    ctx.save();
+    ctx.strokeStyle = opts.color || '#6B7280';
+    ctx.setLineDash([4,4]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(xPix, chartArea.top);
+    ctx.lineTo(xPix, chartArea.bottom + 16);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = opts.color || '#6B7280';
+    ctx.font = '11px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`AVG ${opts.value.toFixed(0)}%`, xPix, chartArea.bottom + 30);
+    ctx.restore();
+  }
+};
+Chart.register(avgLinePlugin);
+
+function chartOptions(horizontal, axisType, extraBottomPadding){
+  const gridColor = '#EEF0F3';
+  const textColor = '#6B7280';
+  const isPercent = axisType === 'percent';
+  const tickCb = isPercent ? (v => v + "%") : (v => fmtCurrencyShort(v));
+
+  const categoryAxis = {
+    ticks: { color: '#14171F', font: { family: 'Inter', size: 12, weight: '500' } },
+    grid: { display: false },
+    border: { display: false }
+  };
+  const valueAxis = {
+    ticks: { color: textColor, font: { family: 'JetBrains Mono', size: 11 }, callback: tickCb },
+    grid: { color: gridColor },
+    border: { display: false }
+  };
+
+  return {
+    indexAxis: horizontal ? 'y' : 'x',
+    responsive: true,
+    maintainAspectRatio: false,
+    layout: extraBottomPadding ? { padding: { bottom: extraBottomPadding } } : {},
+    interaction: { mode: 'nearest', axis: 'y', intersect: true },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#14171F',
+        borderColor: '#E3E6EB',
+        borderWidth: 0,
+        titleColor: '#fff',
+        bodyColor: '#fff',
+        padding: 10,
+        cornerRadius: 6,
+        callbacks: {
+          label: (c) => c.dataset.label + ": " + (isPercent ? c.raw.toFixed(1) + "%" : fmtCurrencyFull(c.raw))
+        }
+      }
+    },
+    scales: horizontal ? { x: valueAxis, y: categoryAxis } : { x: categoryAxis, y: valueAxis }
+  };
+}
+
+function datalabelConfig(isPercent, color){
+  return {
+    display: (ctx) => ctx.dataset.data[ctx.dataIndex] !== 0,
+    anchor: 'end',
+    align: 'end',
+    color: color || '#14171F',
+    font: { family: 'JetBrains Mono', size: 10, weight: '500' },
+    formatter: (v) => isPercent ? v.toFixed(0) + '%' : fmtCurrencyShort(v)
+  };
+}
+
+// ---------- Bookings vs Pipeline + Receipts ----------
+function renderBookingsPipelineAndReceipts(bookingRows, pipelineRows){
+  const bookingBySales = {};
+  let totalBooking = 0, totalReceipt = 0;
+  const receiptByOwner = {};
+
+  bookingRows.forEach(row => {
+    const sp = (row["Sales Person"] || "").trim();
+    const booking = parseNum(row["Booking"]);
+    const receipt = parseNum(row["Receipt Amount"]);
+    const owner = (row["Project Owner"] || "").trim();
+
+    if (sp) bookingBySales[sp] = (bookingBySales[sp] || 0) + booking;
+    totalBooking += booking;
+    totalReceipt += receipt;
+    if (owner) receiptByOwner[owner] = (receiptByOwner[owner] || 0) + receipt;
+  });
+
+  const pipelineByOwner = {};
+  let totalPipeline = 0, pipelineCount = 0;
+  pipelineRows.forEach(row => {
+    const owner = (row["LeadOwner"] || "").trim();
+    const val = parseNum(row["OrderValue"]);
+    if (owner) pipelineByOwner[owner] = (pipelineByOwner[owner] || 0) + val;
+    totalPipeline += val;
+    pipelineCount++;
+  });
+  const pipelineByNorm = {};
+  Object.entries(pipelineByOwner).forEach(([owner, val]) => {
+    pipelineByNorm[normName(owner)] = (pipelineByNorm[normName(owner)] || 0) + val;
+  });
+
+  // Full roster = everyone who ever appears as a Sales Person anywhere in the
+  // raw (unfiltered) data, so reps with $0 in the current filter still show.
+  const salesRoster = uniqueNonEmpty(rawBookingRows.map(r => r["Sales Person"]))
+    .sort((a,b) => (bookingBySales[b]||0) - (bookingBySales[a]||0));
+  const bookingVals = salesRoster.map(n => bookingBySales[n] || 0);
+  const pipelineVals = salesRoster.map(n => pipelineByNorm[normName(n)] || 0);
+
+  document.getElementById('kpiBookings').textContent = fmtCurrencyShort(totalBooking);
+  document.getElementById('kpiBookings').title = fmtCurrencyFull(totalBooking);
+  document.getElementById('kpiReceipts').textContent = fmtCurrencyShort(totalReceipt);
+  document.getElementById('kpiReceipts').title = fmtCurrencyFull(totalReceipt);
+  document.getElementById('kpiPipeline').textContent = fmtCurrencyShort(totalPipeline);
+  document.getElementById('kpiPipeline').title = fmtCurrencyFull(totalPipeline);
+  document.getElementById('kpiPipelineCount').textContent = pipelineCount;
+
+  const rowH = 34;
+  document.getElementById('salesChartWrap').style.height = Math.max(240, salesRoster.length * rowH + 50) + 'px';
+  const ctx1 = document.getElementById('chartSales').getContext('2d');
+  if (chartSales) chartSales.destroy();
+  chartSales = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: salesRoster,
+      datasets: [
+        { label: 'Booking', data: bookingVals, backgroundColor: (c) => barGradient(c, '#E8B08E', '#C1653D'), borderRadius: 5, maxBarThickness: 18, datalabels: datalabelConfig(false, '#C1653D') },
+        { label: 'Pipeline (Proposal Shared)', data: pipelineVals, backgroundColor: (c) => barGradient(c, '#8FD9C9', '#2F8F7C'), borderRadius: 5, maxBarThickness: 18, datalabels: datalabelConfig(false, '#2F8F7C') }
+      ]
+    },
+    options: chartOptions(true, 'money')
+  });
+
+  // Delivery-head roster = union of Project Owner (bookings) and DivisionHead (EWMS),
+  // so both delivery-head charts use the same complete, aligned label set.
+  const deliveryRoster = uniqueNonEmpty([
+    ...rawBookingRows.map(r => r["Project Owner"]),
+    ...rawEwmsRows.map(r => r["DivisionHead"])
+  ]).sort((a,b) => (receiptByOwner[b]||0) - (receiptByOwner[a]||0));
+
+  document.getElementById('receiptsChartWrap').style.height = Math.max(220, deliveryRoster.length * rowH + 50) + 'px';
+  const ctx2 = document.getElementById('chartReceipts').getContext('2d');
+  if (chartReceipts) chartReceipts.destroy();
+  chartReceipts = new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels: deliveryRoster,
+      datasets: [{ label: 'Receipt collected', data: deliveryRoster.map(n => receiptByOwner[n] || 0), backgroundColor: (c) => barGradient(c, '#8FB8E8', '#3355DD'), borderRadius: 5, maxBarThickness: 18, datalabels: datalabelConfig(false, '#3355DD') }]
+    },
+    options: chartOptions(true, 'money')
+  });
+}
+
+// ---------- Kick-off % chart ----------
+function renderKickoffChart(bookingRows){
+  const salesRoster = uniqueNonEmpty(rawBookingRows.map(r => r["Sales Person"]));
+  const freshBooking = {}, kickoffReceipt = {};
+  salesRoster.forEach(n => { freshBooking[n] = 0; kickoffReceipt[n] = 0; });
+
+  bookingRows.forEach(row => {
+    const sp = (row["Sales Person"] || "").trim();
+    if (!sp) return;
+    const category = (row["Sales Category"] || "").toLowerCase().trim();
+    const booking = parseNum(row["Booking"]);
+    const receipt = parseNum(row["Receipt Amount"]);
+    if (category.includes('milestone')) return; // milestone payments excluded from this ratio
+    if (category === 'fresh' && booking) {
+      freshBooking[sp] = (freshBooking[sp] || 0) + booking;
+      kickoffReceipt[sp] = (kickoffReceipt[sp] || 0) + receipt; // receipt on the same row = kick-off payment
+    }
+  });
+
+  const roster = salesRoster.filter(n => freshBooking[n] > 0 || kickoffReceipt[n] > 0);
+  const pct = roster.map(n => freshBooking[n] > 0 ? Math.min(100, (kickoffReceipt[n] / freshBooking[n]) * 100) : 0);
+  const sortedIdx = roster.map((n,i) => i).sort((a,b) => pct[b]-pct[a]);
+  const sortedRoster = sortedIdx.map(i => roster[i]);
+  const sortedPct = sortedIdx.map(i => pct[i]);
+
+  const totalFresh = Object.values(freshBooking).reduce((a,b)=>a+b,0);
+  const totalKickoff = Object.values(kickoffReceipt).reduce((a,b)=>a+b,0);
+  const avgPct = totalFresh > 0 ? (totalKickoff/totalFresh)*100 : 0;
+
+  document.getElementById('kickoffChartWrap').style.height = Math.max(220, sortedRoster.length * 34 + 70) + 'px';
+  const ctx = document.getElementById('chartKickoff').getContext('2d');
+  if (chartKickoff) chartKickoff.destroy();
+  const opts = chartOptions(true, 'percent', 30);
+  opts.plugins.avgLine = { value: avgPct, color: '#6B7280' };
+  chartKickoff = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sortedRoster,
+      datasets: [{ label: 'Kick-off rate', data: sortedPct, backgroundColor: (c) => barGradient(c, '#8FB8E8', '#3355DD'), borderRadius: 5, maxBarThickness: 18, datalabels: datalabelConfig(true, '#3355DD') }]
+    },
+    options: opts
+  });
+}
+
+// ---------- Sales performance table ----------
+function renderSalesPerformanceTable(bookingRows){
+  const salesRoster = uniqueNonEmpty(rawBookingRows.map(r => r["Sales Person"]));
+  const data = {};
+  salesRoster.forEach(n => { data[n] = { fresh: 0, crossell: 0, upsell: 0 }; });
+
+  bookingRows.forEach(row => {
+    const sp = (row["Sales Person"] || "").trim();
+    if (!sp || !data[sp]) return;
+    const category = (row["Sales Category"] || "").toLowerCase().trim();
+    const booking = parseNum(row["Booking"]);
+    if (category.includes('milestone')) return; // explicitly excluded
+    if (category === 'fresh') data[sp].fresh += booking;
+    else if (category === 'crossell') data[sp].crossell += booking;
+    else if (category === 'upsell') data[sp].upsell += booking;
+  });
+
+  const rows = salesRoster
+    .map(n => ({ name: n, ...data[n], total: data[n].fresh + data[n].crossell + data[n].upsell }))
+    .filter(r => r.total > 0 || true) // keep everyone per "show all active owners"
+    .sort((a,b) => b.total - a.total);
+
+  const totals = rows.reduce((acc, r) => ({
+    fresh: acc.fresh + r.fresh, crossell: acc.crossell + r.crossell, upsell: acc.upsell + r.upsell, total: acc.total + r.total
+  }), { fresh:0, crossell:0, upsell:0, total:0 });
+
+  let html = `<table class="data-table"><thead><tr>
+    <th>Sales Person</th><th>Fresh</th><th>Crossell</th><th>Upsell</th><th>Total Booking</th>
+  </tr></thead><tbody>`;
+  rows.forEach(r => {
+    html += `<tr><td>${r.name}</td><td>${fmtCurrencyFull(r.fresh)}</td><td>${fmtCurrencyFull(r.crossell)}</td><td>${fmtCurrencyFull(r.upsell)}</td><td>${fmtCurrencyFull(r.total)}</td></tr>`;
+  });
+  html += `<tr class="total-row"><td>Total</td><td>${fmtCurrencyFull(totals.fresh)}</td><td>${fmtCurrencyFull(totals.crossell)}</td><td>${fmtCurrencyFull(totals.upsell)}</td><td>${fmtCurrencyFull(totals.total)}</td></tr>`;
+  html += `</tbody></table>`;
+  document.getElementById('salesPerfTableWrap').innerHTML = html;
+}
+
+// ---------- EWMS ----------
 function renderEwms(rows){
   const card = document.getElementById('ewmsErrorCard');
-  const wrap = document.getElementById('ewmsChartWrap');
+  const wrap = document.getElementById('ewmsChartWrap').closest('.chart-scroll');
   card.style.display = 'none';
   wrap.style.display = 'block';
 
@@ -409,134 +773,98 @@ function renderEwms(rows){
     byHead[head].pending += parseNum(r["PendingPayment"]);
   });
 
-  const heads = Object.keys(byHead).sort((a,b) => (byHead[b].received+byHead[b].pending) - (byHead[a].received+byHead[a].pending));
+  const deliveryRoster = uniqueNonEmpty([
+    ...rawBookingRows.map(r => r["Project Owner"]),
+    ...rawEwmsRows.map(r => r["DivisionHead"])
+  ]).sort((a,b) => ((byHead[b]?.received||0)+(byHead[b]?.pending||0)) - ((byHead[a]?.received||0)+(byHead[a]?.pending||0)));
 
+  document.getElementById('ewmsChartWrap').style.height = Math.max(220, deliveryRoster.length * 34 + 50) + 'px';
   const ctx = document.getElementById('chartEwms').getContext('2d');
-  document.getElementById('chartEwms').parentElement.style.height = Math.max(220, heads.length * 36 + 50) + 'px';
   if (chartEwms) chartEwms.destroy();
-  const opts = chartOptions(true);
+  const opts = chartOptions(true, 'money');
   chartEwms = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: heads,
+      labels: deliveryRoster,
       datasets: [
-        { label: 'Received', data: heads.map(h => byHead[h].received), backgroundColor: (c) => barGradient(c, '#8FD9C9', '#2F8F7C'), borderRadius: 5, maxBarThickness: 20, stack: 's' },
-        { label: 'Pending', data: heads.map(h => byHead[h].pending), backgroundColor: (c) => barGradient(c, '#E8B08E', '#C1653D'), borderRadius: 5, maxBarThickness: 20, stack: 's' }
+        { label: 'Received', data: deliveryRoster.map(h => byHead[h]?.received || 0), backgroundColor: (c) => barGradient(c, '#8FD9C9', '#2F8F7C'), borderRadius: 5, maxBarThickness: 18, stack: 's' },
+        { label: 'Pending', data: deliveryRoster.map(h => byHead[h]?.pending || 0), backgroundColor: (c) => barGradient(c, '#E8B08E', '#C1653D'), borderRadius: 5, maxBarThickness: 18, stack: 's' }
       ]
     },
     options: { ...opts, scales: { ...opts.scales, x: { ...opts.scales.x, stacked: true }, y: { ...opts.scales.y, stacked: true } } }
   });
 }
 
-function render(bookingRows, pipelineRows){
-  const bookingBySales = {};
-  let totalBooking = 0, totalReceipt = 0;
-  const receiptByOwner = {};
-
-  bookingRows.forEach(row => {
-    const sp = (row["Sales Person"] || "").trim();
-    const booking = parseNum(row["Booking"]);
-    const receipt = parseNum(row["Receipt Amount"]);
-    const owner = (row["Project Owner"] || "").trim();
-
-    if (sp && booking) bookingBySales[sp] = (bookingBySales[sp] || 0) + booking;
-    totalBooking += booking;
-    totalReceipt += receipt;
-    if (owner) receiptByOwner[owner] = (receiptByOwner[owner] || 0) + receipt;
+// ---------- Pipeline detail section ----------
+function renderPipelineSection(pipelineRows){
+  const now = new Date();
+  const withAge = pipelineRows.map(r => {
+    const created = r["CreatedOn"] ? new Date(r["CreatedOn"]) : null;
+    const ageDays = created ? Math.floor((now - created) / 86400000) : null;
+    let status = 'fresh';
+    if (ageDays !== null) {
+      if (ageDays > 180) status = 'stale';
+      else if (ageDays > 90) status = 'aging';
+    }
+    return {
+      owner: (r["LeadOwner"] || "Unassigned").trim() || "Unassigned",
+      name: `${r["FirstName"]||""} ${r["LastName"]||""}`.trim() || "(no name)",
+      value: parseNum(r["OrderValue"]),
+      ageDays, status
+    };
   });
 
-  const pipelineByOwner = {};
-  let totalPipeline = 0, pipelineCount = 0;
-  pipelineRows.forEach(row => {
-    const owner = (row["LeadOwner"] || "").trim();
-    const val = parseNum(row["OrderValue"]);
-    if (owner) pipelineByOwner[owner] = (pipelineByOwner[owner] || 0) + val;
-    totalPipeline += val;
-    pipelineCount++;
+  const logged = withAge.filter(r => r.value > 0);
+  const noValue = withAge.filter(r => r.value <= 0);
+  const totalLogged = logged.reduce((s,r) => s + r.value, 0);
+  const staleOrOld = withAge.filter(r => r.ageDays !== null && r.ageDays > 180);
+  const agingValue = staleOrOld.reduce((s,r) => s + r.value, 0);
+  const agingPctOfLogged = totalLogged > 0 ? (agingValue/totalLogged*100).toFixed(0) : 0;
+
+  document.getElementById('pipelineKpiRow').innerHTML = `
+    <div class="kpi" style="--accent:var(--teal)">
+      <div class="kpi-label">Pipeline Value Logged</div>
+      <div class="kpi-value">${fmtCurrencyShort(totalLogged)}</div>
+      <div class="kpi-sub">${logged.length} of ${withAge.length} leads at "Proposal Shared" have a value — treat as a floor, not the full pipeline</div>
+    </div>
+    <div class="kpi" style="--accent:var(--amber)">
+      <div class="kpi-label">No Value Logged</div>
+      <div class="kpi-value">${noValue.length} leads</div>
+      <div class="kpi-sub">${withAge.length ? (noValue.length/withAge.length*100).toFixed(0) : 0}% of the stage — not necessarily stale, just unquoted</div>
+    </div>
+    <div class="kpi" style="--accent:var(--red)">
+      <div class="kpi-label">Aging Concentration</div>
+      <div class="kpi-value">${fmtCurrencyShort(agingValue)}</div>
+      <div class="kpi-sub">${staleOrOld.length} deals over 180 days old — ${agingPctOfLogged}% of logged total, worth verifying these are still live</div>
+    </div>
+  `;
+
+  const byOwner = {};
+  withAge.forEach(r => { (byOwner[r.owner] = byOwner[r.owner] || []).push(r); });
+  const owners = Object.keys(byOwner).sort((a,b) => {
+    const totalA = byOwner[a].reduce((s,r)=>s+r.value,0);
+    const totalB = byOwner[b].reduce((s,r)=>s+r.value,0);
+    return totalB - totalA;
   });
 
-  const pipelineByNorm = {};
-  Object.entries(pipelineByOwner).forEach(([owner, val]) => {
-    pipelineByNorm[normName(owner)] = (pipelineByNorm[normName(owner)] || 0) + val;
-  });
-
-  const salesNames = Object.keys(bookingBySales).sort((a,b) => bookingBySales[b]-bookingBySales[a]);
-  const bookingVals = salesNames.map(n => bookingBySales[n]);
-  const pipelineVals = salesNames.map(n => pipelineByNorm[normName(n)] || 0);
-
-  document.getElementById('kpiBookings').textContent = fmtMoney(totalBooking);
-  document.getElementById('kpiBookings').title = fmtFull(totalBooking);
-  document.getElementById('kpiReceipts').textContent = fmtMoney(totalReceipt);
-  document.getElementById('kpiReceipts').title = fmtFull(totalReceipt);
-  document.getElementById('kpiPipeline').textContent = fmtMoney(totalPipeline);
-  document.getElementById('kpiPipeline').title = fmtFull(totalPipeline);
-  document.getElementById('kpiPipelineCount').textContent = pipelineCount;
-
-  const ctx1 = document.getElementById('chartSales').getContext('2d');
-  document.getElementById('chartSales').parentElement.style.height = Math.max(240, salesNames.length * 36 + 50) + 'px';
-  if (chartSales) chartSales.destroy();
-  chartSales = new Chart(ctx1, {
-    type: 'bar',
-    data: {
-      labels: salesNames,
-      datasets: [
-        { label: 'Booking', data: bookingVals, backgroundColor: (c) => barGradient(c, '#E8B08E', '#C1653D'), borderRadius: 5, maxBarThickness: 20 },
-        { label: 'Pipeline (Proposal Shared)', data: pipelineVals, backgroundColor: (c) => barGradient(c, '#8FD9C9', '#2F8F7C'), borderRadius: 5, maxBarThickness: 20 }
-      ]
-    },
-    options: chartOptions(true)
-  });
-
-  const ownerNames = Object.keys(receiptByOwner).sort((a,b) => receiptByOwner[b]-receiptByOwner[a]);
-  const ctx2 = document.getElementById('chartReceipts').getContext('2d');
-  document.getElementById('chartReceipts').parentElement.style.height = Math.max(220, ownerNames.length * 36 + 50) + 'px';
-  if (chartReceipts) chartReceipts.destroy();
-  chartReceipts = new Chart(ctx2, {
-    type: 'bar',
-    data: {
-      labels: ownerNames,
-      datasets: [{ label: 'Receipt collected', data: ownerNames.map(n => receiptByOwner[n]), backgroundColor: (c) => barGradient(c, '#8FB8E8', '#3355DD'), borderRadius: 5, maxBarThickness: 20 }]
-    },
-    options: chartOptions(true)
-  });
-}
-
-function chartOptions(horizontal){
-  const gridColor = '#EEF0F3';
-  const textColor = '#6B7280';
-  const moneyTick = (v) => v >= 1000 ? "$" + (v/1000) + "K" : "$" + v;
-
-  const categoryAxis = {
-    ticks: { color: '#14171F', font: { family: 'Inter', size: 12, weight: '500' } },
-    grid: { display: false },
-    border: { display: false }
-  };
-  const valueAxis = {
-    ticks: { color: textColor, font: { family: 'JetBrains Mono', size: 11 }, callback: moneyTick },
-    grid: { color: gridColor },
-    border: { display: false }
+  const statusPill = (s) => {
+    if (s === 'stale') return '<span class="status-pill status-stale">Stale</span>';
+    if (s === 'aging') return '<span class="status-pill status-aging">Aging</span>';
+    return '<span class="status-pill status-fresh">Fresh</span>';
   };
 
-  return {
-    indexAxis: horizontal ? 'y' : 'x',
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: 'index', intersect: false },
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: '#14171F',
-        borderColor: '#E3E6EB',
-        borderWidth: 0,
-        titleColor: '#fff',
-        bodyColor: '#fff',
-        padding: 10,
-        cornerRadius: 6,
-        callbacks: { label: (c) => c.dataset.label + ": $" + Math.round(c.raw).toLocaleString("en-US") }
-      }
-    },
-    scales: horizontal ? { x: valueAxis, y: categoryAxis } : { x: categoryAxis, y: valueAxis }
-  };
+  let html = `<table class="data-table"><thead><tr><th>Lead</th><th>Value</th><th>Age</th><th>Status</th></tr></thead><tbody>`;
+  owners.forEach(owner => {
+    html += `<tr class="owner-row"><td colspan="4">${owner}</td></tr>`;
+    let ownerTotal = 0;
+    byOwner[owner].sort((a,b) => b.value - a.value).forEach(r => {
+      ownerTotal += r.value;
+      html += `<tr><td style="padding-left:20px;">${r.name}</td><td>${fmtCurrencyShort(r.value)}</td><td>${r.ageDays !== null ? r.ageDays + 'd' : '—'}</td><td>${statusPill(r.status)}</td></tr>`;
+    });
+    html += `<tr><td style="padding-left:20px;"><i>${byOwner[owner].length} leads — owner total</i></td><td><b>${fmtCurrencyShort(ownerTotal)}</b></td><td></td><td></td></tr>`;
+  });
+  html += `</tbody></table>`;
+  document.getElementById('pipelineTableWrap').innerHTML = html;
 }
 
 loadAll();
