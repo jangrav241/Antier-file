@@ -1,6 +1,5 @@
 // Vercel serverless function — proxies calls to the EWMS API.
-// CommonJS syntax used deliberately (module.exports, not `export default`)
-// so this works without needing a package.json with "type": "module".
+// CommonJS syntax (module.exports) for compatibility without package.json config.
 
 module.exports = async (req, res) => {
   const quarter = (req.query && req.query.quarter) || 'Q2';
@@ -9,7 +8,16 @@ module.exports = async (req, res) => {
   const targetUrl = `https://api-ewms.antiers.work/payment-milestone/open/quarterly-projection?quarter=${encodeURIComponent(quarter)}&year=${encodeURIComponent(year)}`;
 
   try {
-    const response = await fetch(targetUrl);
+    const response = await fetch(targetUrl, {
+      headers: {
+        // Some APIs/WAFs block requests that don't look like they're
+        // coming from a real browser. These headers mimic one.
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://api-ewms.antiers.work/'
+      }
+    });
     const text = await response.text();
 
     res.setHeader('Access-Control-Allow-Origin', '*');
