@@ -189,24 +189,6 @@
       <div class="filter-label">Financial Year (Apr–Mar)</div>
       <div class="tab-set" id="fyTabs"></div>
     </div>
-    <div class="filter-group">
-      <div class="filter-label">EWMS quarter</div>
-      <select id="ewmsQuarterFilter" onchange="loadEwms()">
-        <option value="Q1">Q1</option>
-        <option value="Q2" selected>Q2</option>
-        <option value="Q3">Q3</option>
-        <option value="Q4">Q4</option>
-      </select>
-    </div>
-    <div class="filter-group">
-      <div class="filter-label">EWMS year</div>
-      <select id="ewmsYearFilter" onchange="loadEwms()">
-        <option value="2024">2024</option>
-        <option value="2025">2025</option>
-        <option value="2026" selected>2026</option>
-        <option value="2027">2027</option>
-      </select>
-    </div>
   </div>
 
   <main>
@@ -267,11 +249,11 @@
 const BOOKINGS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=456245453&single=true&output=csv";
 const PIPELINE_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=682382270&single=true&output=csv";
 
-function ewmsApiUrl(){
-  const quarter = document.getElementById('ewmsQuarterFilter').value;
-  const year = document.getElementById('ewmsYearFilter').value;
-  return `/api/ewms?quarter=${encodeURIComponent(quarter)}&year=${encodeURIComponent(year)}`;
-}
+// EWMS data now comes from a Google Sheet tab (EWMS_Projection), kept fresh
+// by a script run manually/on a schedule inside the office network — the
+// direct API call from the public dashboard was blocked (403) since EWMS
+// only allows requests from known internal IPs.
+const EWMS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=249659915&single=true&output=csv";
 
 let chartSales, chartReceipts, chartEwms;
 let rawBookingRows = [], rawPipelineRows = [];
@@ -302,12 +284,6 @@ async function fetchCsv(url){
   const text = await response.text();
   const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
   return parsed.data;
-}
-
-async function fetchJson(url){
-  const response = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
-  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
-  return response.json();
 }
 
 function showError(message){
@@ -388,8 +364,8 @@ function applyBookingFilter(){
 
 async function loadEwms(){
   try {
-    const ewmsJson = await fetchJson(ewmsApiUrl());
-    renderEwms(ewmsJson);
+    const rows = await fetchCsv(EWMS_CSV);
+    renderEwms(rows);
   } catch (err) {
     console.error('EWMS fetch failed:', err);
     const card = document.getElementById('ewmsErrorCard');
@@ -397,7 +373,7 @@ async function loadEwms(){
     card.style.display = 'block';
     wrap.style.display = 'none';
     card.innerHTML = `Could not load EWMS data: <b>${err.message || err}</b><br>`
-      + `Check Vercel Project Settings → Root Directory, and confirm api/ewms.js shows up under the deployment's Functions tab.`;
+      + `Make sure the EWMS_Projection tab is still published to web as CSV, and that the sync script has been run recently.`;
   }
 }
 
@@ -413,23 +389,24 @@ function barGradient(context, colorStart, colorEnd){
   return gradient;
 }
 
-function renderEwms(json){
+function renderEwms(rows){
   const card = document.getElementById('ewmsErrorCard');
   const wrap = document.getElementById('ewmsChartWrap');
   card.style.display = 'none';
   wrap.style.display = 'block';
 
-  const payload = json.data || json;
-  const rows = payload.data || [];
-  const label = `${payload.quarter || ''} ${payload.year || ''}`.trim();
+  const quarter = rows[0] && rows[0]["Quarter"] ? rows[0]["Quarter"] : '';
+  const year = rows[0] && rows[0]["Year"] ? rows[0]["Year"] : '';
+  const syncedAt = rows[0] && rows[0]["SyncedAt"] ? new Date(rows[0]["SyncedAt"]) : null;
+  const label = `${quarter} ${year}`.trim() + (syncedAt ? ` · synced ${syncedAt.toLocaleDateString()} ${syncedAt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}` : '');
   document.getElementById('ewmsQuarterLabel').textContent = label ? `· ${label}` : '';
 
   const byHead = {};
   rows.forEach(r => {
-    const head = r.divisionHead || 'Unassigned';
+    const head = (r["DivisionHead"] || '').trim() || 'Unassigned';
     if (!byHead[head]) byHead[head] = { received: 0, pending: 0 };
-    byHead[head].received += Number(r.received) || 0;
-    byHead[head].pending += Number(r.pendingPayment) || 0;
+    byHead[head].received += parseNum(r["Received"]);
+    byHead[head].pending += parseNum(r["PendingPayment"]);
   });
 
   const heads = Object.keys(byHead).sort((a,b) => (byHead[b].received+byHead[b].pending) - (byHead[a].received+byHead[a].pending));
