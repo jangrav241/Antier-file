@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Antier Sales &amp; Pipeline Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0A0E1A;
+    --panel: #121826;
+    --panel-2: #171F30;
+    --border: #232B3D;
+    --text: #E8ECF3;
+    --muted: #8B93A7;
+    --gold: #F5A623;
+    --teal: #22D3B0;
+    --sky: #4C9FE8;
+    --red: #EF5B5B;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(245,166,35,0.06), transparent 60%),
+      radial-gradient(1000px 500px at 90% 0%, rgba(34,211,176,0.06), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    min-height:100vh;
+    padding-bottom:60px;
+  }
+  .ticker{
+    background:var(--panel-2);
+    border-bottom:1px solid var(--border);
+    overflow:hidden;
+    white-space:nowrap;
+    padding:8px 0;
+  }
+  .ticker-track{
+    display:inline-block;
+    animation: scroll 32s linear infinite;
+    font-family:'JetBrains Mono', monospace;
+    font-size:13px;
+    letter-spacing:0.02em;
+  }
+  .ticker-track span{ margin-right:48px; color:var(--muted); }
+  .ticker-track span b{ color:var(--teal); font-weight:600; }
+  @keyframes scroll{
+    0%{ transform:translateX(0); }
+    100%{ transform:translateX(-50%); }
+  }
+
+  header{
+    padding:36px 48px 24px;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:16px;
+    border-bottom:1px solid var(--border);
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    color:var(--teal);
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    margin-bottom:8px;
+  }
+  h1{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    font-size:32px;
+    letter-spacing:-0.01em;
+  }
+  .meta{
+    text-align:right;
+    font-size:13px;
+    color:var(--muted);
+  }
+  .refresh-btn{
+    background:var(--panel);
+    border:1px solid var(--border);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    font-size:13px;
+    font-weight:500;
+    padding:9px 16px;
+    border-radius:8px;
+    cursor:pointer;
+    margin-top:6px;
+    transition:border-color 0.15s;
+  }
+  .refresh-btn:hover{ border-color:var(--teal); }
+  .refresh-btn:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
+
+  main{ padding:36px 48px; max-width:1400px; margin:0 auto; }
+
+  .kpi-row{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+    gap:16px;
+    margin-bottom:40px;
+  }
+  .kpi{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:20px 22px;
+    position:relative;
+    overflow:hidden;
+  }
+  .kpi::before{
+    content:'';
+    position:absolute; top:0; left:0; width:3px; height:100%;
+    background:var(--accent, var(--teal));
+  }
+  .kpi-label{
+    font-size:12px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    margin-bottom:10px;
+  }
+  .kpi-value{
+    font-family:'JetBrains Mono', monospace;
+    font-size:28px;
+    font-weight:600;
+  }
+  .kpi-sub{ font-size:12px; color:var(--muted); margin-top:6px; }
+
+  .section{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:28px 28px 20px;
+    margin-bottom:28px;
+  }
+  .section-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:20px;
+    flex-wrap:wrap;
+    gap:12px;
+  }
+  .section-title{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:18px;
+    font-weight:600;
+  }
+  .section-note{ font-size:12px; color:var(--muted); }
+  .legend-dot{
+    display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px;
+  }
+  .chart-wrap{ position:relative; height:360px; }
+  .chart-wrap.short{ height:280px; }
+
+  .placeholder-card{
+    border:1px dashed var(--border);
+    border-radius:10px;
+    padding:24px;
+    text-align:center;
+    color:var(--muted);
+    font-size:13px;
+    line-height:1.6;
+  }
+  .placeholder-card b{ color:var(--gold); }
+
+  .status{
+    font-family:'JetBrains Mono', monospace;
+    font-size:12px;
+    color:var(--muted);
+    padding:60px 0;
+    text-align:center;
+  }
+  .status.error{ color:var(--red); }
+
+  ::selection{ background:var(--teal); color:#0A0E1A; }
+
+  @media (max-width:640px){
+    header, main{ padding-left:20px; padding-right:20px; }
+    h1{ font-size:24px; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="ticker">
+    <div class="ticker-track" id="ticker">
+      <span>Loading live data…</span>
+    </div>
+  </div>
+
+  <header>
+    <div>
+      <div class="eyebrow">Live · Auto-refreshing on load</div>
+      <h1>Sales &amp; Pipeline Dashboard</h1>
+    </div>
+    <div class="meta">
+      <div id="lastRefreshed">Loading…</div>
+      <button class="refresh-btn" onclick="loadAll()">↻ Refresh now</button>
+    </div>
+  </header>
+
+  <main>
+
+    <div class="kpi-row" id="kpiRow">
+      <div class="kpi" style="--accent:var(--gold)">
+        <div class="kpi-label">Total Bookings</div>
+        <div class="kpi-value" id="kpiBookings">—</div>
+        <div class="kpi-sub">All fresh &amp; upsell deals closed</div>
+      </div>
+      <div class="kpi" style="--accent:var(--sky)">
+        <div class="kpi-label">Total Receipts</div>
+        <div class="kpi-value" id="kpiReceipts">—</div>
+        <div class="kpi-sub">Payments actually collected</div>
+      </div>
+      <div class="kpi" style="--accent:var(--teal)">
+        <div class="kpi-label">Pipeline (Proposal Shared)</div>
+        <div class="kpi-value" id="kpiPipeline">—</div>
+        <div class="kpi-sub"><span id="kpiPipelineCount">—</span> open opportunities</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Bookings vs Pipeline — by Sales Person</div>
+        <div class="section-note">
+          <span class="legend-dot" style="background:var(--gold)"></span>Booking
+          <span class="legend-dot" style="background:var(--teal); margin-left:14px;"></span>Pipeline (Proposal Shared)
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="chartSales"></canvas></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Receipts by Delivery Head</div>
+        <div class="section-note">
+          <span class="legend-dot" style="background:var(--sky)"></span>Receipt collected
+        </div>
+      </div>
+      <div class="chart-wrap short"><canvas id="chartReceipts"></canvas></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">Projection by Delivery Head — EWMS</div>
+        <div class="section-note">
+          <span class="legend-dot" style="background:var(--teal)"></span>Received
+          <span class="legend-dot" style="background:var(--gold); margin-left:14px;"></span>Pending
+          <span id="ewmsQuarterLabel" style="margin-left:14px;"></span>
+        </div>
+      </div>
+      <div id="ewmsErrorCard" class="placeholder-card" style="display:none;"></div>
+      <div class="chart-wrap short" id="ewmsChartWrap"><canvas id="chartEwms"></canvas></div>
+    </div>
+
+  </main>
+
+<script>
+const BOOKINGS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=456245453&single=true&output=csv";
+const PIPELINE_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=682382270&single=true&output=csv";
+const EWMS_API_URL = "https://api-ewms.antiers.work/payment-milestone/open/quarterly-projection?quarter=Q2&year=2026";
+
+let chartSales, chartReceipts, chartEwms;
+
+function fmtMoney(n){
+  if (!isFinite(n)) return "$0";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return "$" + (n/1_000_000).toFixed(2) + "M";
+  if (abs >= 1_000) return "$" + (n/1_000).toFixed(1) + "K";
+  return "$" + n.toFixed(0);
+}
+function fmtFull(n){
+  return "$" + Math.round(n).toLocaleString("en-US");
+}
+function normName(name){
+  if (!name) return "";
+  return name.trim().toLowerCase().split(/\s+/)[0];
+}
+function parseNum(v){
+  if (v === undefined || v === null) return 0;
+  const cleaned = String(v).replace(/[^0-9.\-]/g, "");
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : n;
+}
+
+async function fetchCsv(url){
+  const response = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} fetching ${url}`);
+  }
+  const text = await response.text();
+  const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+  return parsed.data;
+}
+
+async function fetchJson(url){
+  const response = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} fetching ${url}`);
+  }
+  return response.json();
+}
+
+function showError(message){
+  document.getElementById('lastRefreshed').textContent = "Refresh failed";
+  let box = document.getElementById('errorBox');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'errorBox';
+    box.style.cssText = 'margin-top:8px; padding:10px 14px; background:rgba(239,91,91,0.1); border:1px solid var(--red); border-radius:8px; font-family:JetBrains Mono, monospace; font-size:12px; color:var(--red); max-width:420px; text-align:left;';
+    document.querySelector('.meta').appendChild(box);
+  }
+  box.textContent = message;
+}
+
+async function loadAll(){
+  document.getElementById('lastRefreshed').textContent = "Refreshing…";
+  const existingError = document.getElementById('errorBox');
+  if (existingError) existingError.remove();
+
+  try {
+    const [bookingRows, pipelineRows] = await Promise.all([
+      fetchCsv(BOOKINGS_CSV),
+      fetchCsv(PIPELINE_CSV)
+    ]);
+    render(bookingRows, pipelineRows);
+    const now = new Date();
+    document.getElementById('lastRefreshed').textContent =
+      "Last refreshed " + now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) +
+      " · " + now.toLocaleDateString();
+  } catch (err) {
+    console.error(err);
+    showError(err.message || String(err));
+  }
+
+  // EWMS is fetched separately so a CORS/network issue here doesn't
+  // take down the Bookings/Pipeline/Receipts charts above.
+  try {
+    const ewmsJson = await fetchJson(EWMS_API_URL);
+    renderEwms(ewmsJson);
+  } catch (err) {
+    console.error('EWMS fetch failed:', err);
+    const card = document.getElementById('ewmsErrorCard');
+    const wrap = document.getElementById('ewmsChartWrap');
+    card.style.display = 'block';
+    wrap.style.display = 'none';
+    card.innerHTML = `Could not load EWMS data directly from the browser: <b>${err.message || err}</b><br>`
+      + `This is most likely a CORS restriction on the EWMS API (it may not allow direct calls from a webpage). `
+      + `If this persists, we'll route it through a small proxy instead of a direct browser call.`;
+  }
+}
+
+function renderEwms(json){
+  const card = document.getElementById('ewmsErrorCard');
+  const wrap = document.getElementById('ewmsChartWrap');
+  card.style.display = 'none';
+  wrap.style.display = 'block';
+
+  const payload = json.data || json;
+  const rows = payload.data || [];
+  const label = `${payload.quarter || ''} ${payload.year || ''}`.trim();
+  document.getElementById('ewmsQuarterLabel').textContent = label ? `· ${label}` : '';
+
+  const byHead = {};
+  rows.forEach(r => {
+    const head = r.divisionHead || 'Unassigned';
+    if (!byHead[head]) byHead[head] = { received: 0, pending: 0 };
+    byHead[head].received += Number(r.received) || 0;
+    byHead[head].pending += Number(r.pendingPayment) || 0;
+  });
+
+  const heads = Object.keys(byHead).sort((a,b) => (byHead[b].received+byHead[b].pending) - (byHead[a].received+byHead[a].pending));
+
+  const ctx = document.getElementById('chartEwms').getContext('2d');
+  if (chartEwms) chartEwms.destroy();
+  chartEwms = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: heads,
+      datasets: [
+        { label: 'Received', data: heads.map(h => byHead[h].received), backgroundColor: '#22D3B0', borderRadius: 4, maxBarThickness: 34, stack: 's' },
+        { label: 'Pending', data: heads.map(h => byHead[h].pending), backgroundColor: '#F5A623', borderRadius: 4, maxBarThickness: 34, stack: 's' }
+      ]
+    },
+    options: { ...chartOptions(), scales: { ...chartOptions().scales, x: { ...chartOptions().scales.x, stacked: true }, y: { ...chartOptions().scales.y, stacked: true } } }
+  });
+}
+
+function render(bookingRows, pipelineRows){
+  // ---- Bookings by Sales Person ----
+  const bookingBySales = {};
+  let totalBooking = 0, totalReceipt = 0;
+  const receiptByOwner = {};
+
+  bookingRows.forEach(row => {
+    const sp = (row["Sales Person"] || "").trim();
+    const booking = parseNum(row["Booking"]);
+    const receipt = parseNum(row["Receipt Amount"]);
+    const owner = (row["Project Owner"] || "").trim();
+
+    if (sp && booking) {
+      bookingBySales[sp] = (bookingBySales[sp] || 0) + booking;
+    }
+    totalBooking += booking;
+    totalReceipt += receipt;
+
+    if (owner) {
+      receiptByOwner[owner] = (receiptByOwner[owner] || 0) + receipt;
+    }
+  });
+
+  // ---- Pipeline by Lead Owner ----
+  const pipelineByOwner = {};
+  let totalPipeline = 0, pipelineCount = 0;
+  pipelineRows.forEach(row => {
+    const owner = (row["LeadOwner"] || "").trim();
+    const val = parseNum(row["OrderValue"]);
+    if (owner) {
+      pipelineByOwner[owner] = (pipelineByOwner[owner] || 0) + val;
+    }
+    totalPipeline += val;
+    pipelineCount++;
+  });
+
+  // Match sales person -> pipeline owner by normalized first name
+  const pipelineByNorm = {};
+  Object.entries(pipelineByOwner).forEach(([owner, val]) => {
+    pipelineByNorm[normName(owner)] = (pipelineByNorm[normName(owner)] || 0) + val;
+  });
+
+  const salesNames = Object.keys(bookingBySales).sort((a,b) => bookingBySales[b]-bookingBySales[a]);
+  const bookingVals = salesNames.map(n => bookingBySales[n]);
+  const pipelineVals = salesNames.map(n => pipelineByNorm[normName(n)] || 0);
+
+  // ---- KPIs ----
+  document.getElementById('kpiBookings').textContent = fmtMoney(totalBooking);
+  document.getElementById('kpiBookings').title = fmtFull(totalBooking);
+  document.getElementById('kpiReceipts').textContent = fmtMoney(totalReceipt);
+  document.getElementById('kpiReceipts').title = fmtFull(totalReceipt);
+  document.getElementById('kpiPipeline').textContent = fmtMoney(totalPipeline);
+  document.getElementById('kpiPipeline').title = fmtFull(totalPipeline);
+  document.getElementById('kpiPipelineCount').textContent = pipelineCount;
+
+  // ---- Ticker ----
+  const tickerParts = salesNames.slice(0, 10).map(n =>
+    `<span>${n}: <b>${fmtMoney(bookingBySales[n])}</b> booked${(pipelineByNorm[normName(n)]) ? " / " + fmtMoney(pipelineByNorm[normName(n)]) + " pipeline" : ""}</span>`
+  );
+  const tickerHtml = tickerParts.join("") + tickerParts.join(""); // duplicate for seamless loop
+  document.getElementById('ticker').innerHTML = tickerHtml || "<span>No data</span>";
+
+  // ---- Chart: Bookings vs Pipeline ----
+  const ctx1 = document.getElementById('chartSales').getContext('2d');
+  if (chartSales) chartSales.destroy();
+  chartSales = new Chart(ctx1, {
+    type: 'bar',
+    data: {
+      labels: salesNames,
+      datasets: [
+        {
+          label: 'Booking',
+          data: bookingVals,
+          backgroundColor: '#F5A623',
+          borderRadius: 4,
+          maxBarThickness: 34
+        },
+        {
+          label: 'Pipeline (Proposal Shared)',
+          data: pipelineVals,
+          backgroundColor: '#22D3B0',
+          borderRadius: 4,
+          maxBarThickness: 34
+        }
+      ]
+    },
+    options: chartOptions()
+  });
+
+  // ---- Chart: Receipts by Delivery Head ----
+  const ownerNames = Object.keys(receiptByOwner).sort((a,b) => receiptByOwner[b]-receiptByOwner[a]);
+  const ctx2 = document.getElementById('chartReceipts').getContext('2d');
+  if (chartReceipts) chartReceipts.destroy();
+  chartReceipts = new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels: ownerNames,
+      datasets: [{
+        label: 'Receipt collected',
+        data: ownerNames.map(n => receiptByOwner[n]),
+        backgroundColor: '#4C9FE8',
+        borderRadius: 4,
+        maxBarThickness: 34
+      }]
+    },
+    options: chartOptions()
+  });
+}
+
+function chartOptions(){
+  const gridColor = 'rgba(255,255,255,0.06)';
+  const textColor = '#8B93A7';
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#171F30',
+        borderColor: '#232B3D',
+        borderWidth: 1,
+        titleColor: '#E8ECF3',
+        bodyColor: '#E8ECF3',
+        padding: 10,
+        callbacks: {
+          label: (c) => c.dataset.label + ": $" + Math.round(c.raw).toLocaleString("en-US")
+        }
+      }
+    },
+    scales: {
+      x: {
+        ticks: { color: textColor, font: { family: 'Inter', size: 11 }, maxRotation: 40, minRotation: 0 },
+        grid: { display: false }
+      },
+      y: {
+        ticks: {
+          color: textColor,
+          font: { family: 'JetBrains Mono', size: 11 },
+          callback: (v) => v >= 1000 ? "$" + (v/1000) + "K" : "$" + v
+        },
+        grid: { color: gridColor }
+      }
+    }
+  };
+}
+
+loadAll();
+</script>
+</body>
+</html>
