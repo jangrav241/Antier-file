@@ -97,6 +97,38 @@
   .refresh-btn:hover{ border-color:var(--teal); }
   .refresh-btn:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
 
+  .filter-bar{
+    display:flex;
+    gap:24px;
+    flex-wrap:wrap;
+    padding:18px 48px;
+    background:var(--panel-2);
+    border-bottom:1px solid var(--border);
+  }
+  .filter-group{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .filter-group label{
+    font-size:11px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+  }
+  .filter-group select{
+    background:var(--panel);
+    border:1px solid var(--border);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    font-size:13px;
+    padding:7px 10px;
+    border-radius:8px;
+    min-width:170px;
+    cursor:pointer;
+  }
+  .filter-group select:focus-visible{ outline:2px solid var(--teal); outline-offset:1px; }
+
   main{ padding:36px 48px; max-width:1400px; margin:0 auto; }
 
   .kpi-row{
@@ -206,6 +238,33 @@
     </div>
   </header>
 
+  <div class="filter-bar">
+    <div class="filter-group">
+      <label>Bookings / Receipts period</label>
+      <select id="bookingPeriodFilter" onchange="applyBookingFilter()">
+        <option value="All">All periods</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>EWMS quarter</label>
+      <select id="ewmsQuarterFilter" onchange="loadEwms()">
+        <option value="Q1">Q1</option>
+        <option value="Q2" selected>Q2</option>
+        <option value="Q3">Q3</option>
+        <option value="Q4">Q4</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>EWMS year</label>
+      <select id="ewmsYearFilter" onchange="loadEwms()">
+        <option value="2024">2024</option>
+        <option value="2025">2025</option>
+        <option value="2026" selected>2026</option>
+        <option value="2027">2027</option>
+      </select>
+    </div>
+  </div>
+
   <main>
 
     <div class="kpi-row" id="kpiRow">
@@ -265,9 +324,17 @@
 <script>
 const BOOKINGS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=456245453&single=true&output=csv";
 const PIPELINE_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=682382270&single=true&output=csv";
-const EWMS_API_URL = "https://api-ewms.antiers.work/payment-milestone/open/quarterly-projection?quarter=Q2&year=2026";
+
+function ewmsApiUrl(){
+  const quarter = document.getElementById('ewmsQuarterFilter').value;
+  const year = document.getElementById('ewmsYearFilter').value;
+  // Calls our own same-origin proxy (api/ewms.js) instead of EWMS directly,
+  // which avoids the browser CORS restriction on api-ewms.antiers.work.
+  return `/api/ewms?quarter=${encodeURIComponent(quarter)}&year=${encodeURIComponent(year)}`;
+}
 
 let chartSales, chartReceipts, chartEwms;
+let rawBookingRows = [], rawPipelineRows = [];
 
 function fmtMoney(n){
   if (!isFinite(n)) return "$0";
@@ -330,7 +397,10 @@ async function loadAll(){
       fetchCsv(BOOKINGS_CSV),
       fetchCsv(PIPELINE_CSV)
     ]);
-    render(bookingRows, pipelineRows);
+    rawBookingRows = bookingRows;
+    rawPipelineRows = pipelineRows;
+    populateBookingPeriods(bookingRows);
+    applyBookingFilter();
     const now = new Date();
     document.getElementById('lastRefreshed').textContent =
       "Last refreshed " + now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) +
@@ -340,10 +410,31 @@ async function loadAll(){
     showError(err.message || String(err));
   }
 
-  // EWMS is fetched separately so a CORS/network issue here doesn't
-  // take down the Bookings/Pipeline/Receipts charts above.
+  await loadEwms();
+}
+
+function populateBookingPeriods(bookingRows){
+  const select = document.getElementById('bookingPeriodFilter');
+  const current = select.value;
+  const periods = Array.from(new Set(bookingRows.map(r => (r["Quarter"] || "").trim()).filter(Boolean)));
+  // Sort by FY then quarter number, most recent first
+  periods.sort().reverse();
+  select.innerHTML = '<option value="All">All periods</option>' +
+    periods.map(p => `<option value="${p}">${p}</option>`).join('');
+  if (periods.includes(current)) select.value = current;
+}
+
+function applyBookingFilter(){
+  const selected = document.getElementById('bookingPeriodFilter').value;
+  const filteredBookings = selected === 'All'
+    ? rawBookingRows
+    : rawBookingRows.filter(r => (r["Quarter"] || "").trim() === selected);
+  render(filteredBookings, rawPipelineRows);
+}
+
+async function loadEwms(){
   try {
-    const ewmsJson = await fetchJson(EWMS_API_URL);
+    const ewmsJson = await fetchJson(ewmsApiUrl());
     renderEwms(ewmsJson);
   } catch (err) {
     console.error('EWMS fetch failed:', err);
@@ -351,9 +442,8 @@ async function loadAll(){
     const wrap = document.getElementById('ewmsChartWrap');
     card.style.display = 'block';
     wrap.style.display = 'none';
-    card.innerHTML = `Could not load EWMS data directly from the browser: <b>${err.message || err}</b><br>`
-      + `This is most likely a CORS restriction on the EWMS API (it may not allow direct calls from a webpage). `
-      + `If this persists, we'll route it through a small proxy instead of a direct browser call.`;
+    card.innerHTML = `Could not load EWMS data: <b>${err.message || err}</b><br>`
+      + `If you just deployed the api/ewms.js proxy file, make sure it's committed to the repo root under an "api" folder — Vercel needs that exact path to detect it as a serverless function.`;
   }
 }
 
@@ -379,17 +469,19 @@ function renderEwms(json){
   const heads = Object.keys(byHead).sort((a,b) => (byHead[b].received+byHead[b].pending) - (byHead[a].received+byHead[a].pending));
 
   const ctx = document.getElementById('chartEwms').getContext('2d');
+  document.getElementById('chartEwms').parentElement.style.height = Math.max(240, heads.length * 34 + 60) + 'px';
   if (chartEwms) chartEwms.destroy();
+  const opts = chartOptions(true);
   chartEwms = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: heads,
       datasets: [
-        { label: 'Received', data: heads.map(h => byHead[h].received), backgroundColor: '#22D3B0', borderRadius: 4, maxBarThickness: 34, stack: 's' },
-        { label: 'Pending', data: heads.map(h => byHead[h].pending), backgroundColor: '#F5A623', borderRadius: 4, maxBarThickness: 34, stack: 's' }
+        { label: 'Received', data: heads.map(h => byHead[h].received), backgroundColor: '#22D3B0', borderRadius: 4, maxBarThickness: 22, stack: 's' },
+        { label: 'Pending', data: heads.map(h => byHead[h].pending), backgroundColor: '#F5A623', borderRadius: 4, maxBarThickness: 22, stack: 's' }
       ]
     },
-    options: { ...chartOptions(), scales: { ...chartOptions().scales, x: { ...chartOptions().scales.x, stacked: true }, y: { ...chartOptions().scales.y, stacked: true } } }
+    options: { ...opts, scales: { ...opts.scales, x: { ...opts.scales.x, stacked: true }, y: { ...opts.scales.y, stacked: true } } }
   });
 }
 
@@ -457,6 +549,7 @@ function render(bookingRows, pipelineRows){
 
   // ---- Chart: Bookings vs Pipeline ----
   const ctx1 = document.getElementById('chartSales').getContext('2d');
+  document.getElementById('chartSales').parentElement.style.height = Math.max(280, salesNames.length * 34 + 60) + 'px';
   if (chartSales) chartSales.destroy();
   chartSales = new Chart(ctx1, {
     type: 'bar',
@@ -468,23 +561,24 @@ function render(bookingRows, pipelineRows){
           data: bookingVals,
           backgroundColor: '#F5A623',
           borderRadius: 4,
-          maxBarThickness: 34
+          maxBarThickness: 22
         },
         {
           label: 'Pipeline (Proposal Shared)',
           data: pipelineVals,
           backgroundColor: '#22D3B0',
           borderRadius: 4,
-          maxBarThickness: 34
+          maxBarThickness: 22
         }
       ]
     },
-    options: chartOptions()
+    options: chartOptions(true)
   });
 
   // ---- Chart: Receipts by Delivery Head ----
   const ownerNames = Object.keys(receiptByOwner).sort((a,b) => receiptByOwner[b]-receiptByOwner[a]);
   const ctx2 = document.getElementById('chartReceipts').getContext('2d');
+  document.getElementById('chartReceipts').parentElement.style.height = Math.max(240, ownerNames.length * 34 + 60) + 'px';
   if (chartReceipts) chartReceipts.destroy();
   chartReceipts = new Chart(ctx2, {
     type: 'bar',
@@ -495,17 +589,29 @@ function render(bookingRows, pipelineRows){
         data: ownerNames.map(n => receiptByOwner[n]),
         backgroundColor: '#4C9FE8',
         borderRadius: 4,
-        maxBarThickness: 34
+        maxBarThickness: 22
       }]
     },
-    options: chartOptions()
+    options: chartOptions(true)
   });
 }
 
-function chartOptions(){
+function chartOptions(horizontal){
   const gridColor = 'rgba(255,255,255,0.06)';
   const textColor = '#8B93A7';
+  const moneyTick = (v) => v >= 1000 ? "$" + (v/1000) + "K" : "$" + v;
+
+  const categoryAxis = {
+    ticks: { color: textColor, font: { family: 'Inter', size: 11 } },
+    grid: { display: false }
+  };
+  const valueAxis = {
+    ticks: { color: textColor, font: { family: 'JetBrains Mono', size: 11 }, callback: moneyTick },
+    grid: { color: gridColor }
+  };
+
   return {
+    indexAxis: horizontal ? 'y' : 'x',
     responsive: true,
     maintainAspectRatio: false,
     interaction: { mode: 'index', intersect: false },
@@ -523,20 +629,9 @@ function chartOptions(){
         }
       }
     },
-    scales: {
-      x: {
-        ticks: { color: textColor, font: { family: 'Inter', size: 11 }, maxRotation: 40, minRotation: 0 },
-        grid: { display: false }
-      },
-      y: {
-        ticks: {
-          color: textColor,
-          font: { family: 'JetBrains Mono', size: 11 },
-          callback: (v) => v >= 1000 ? "$" + (v/1000) + "K" : "$" + v
-        },
-        grid: { color: gridColor }
-      }
-    }
+    scales: horizontal
+      ? { x: valueAxis, y: categoryAxis }
+      : { x: categoryAxis, y: valueAxis }
   };
 }
 
