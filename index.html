@@ -3,84 +3,63 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Antier Sales &amp; Pipeline Dashboard</title>
+<title>Antier · Sales &amp; Pipeline Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg: #0A0E1A;
-    --panel: #121826;
-    --panel-2: #171F30;
-    --border: #232B3D;
-    --text: #E8ECF3;
-    --muted: #8B93A7;
-    --gold: #F5A623;
-    --teal: #22D3B0;
-    --sky: #4C9FE8;
-    --red: #EF5B5B;
+    --bg: #F4F5F7;
+    --panel: #FFFFFF;
+    --border: #E3E6EB;
+    --text: #14171F;
+    --muted: #6B7280;
+    --blue: #3355DD;
+    --teal: #2F8F7C;
+    --orange: #C1653D;
+    --red: #C0392B;
+    --green-pill-bg: #E7F5EC;
+    --green-pill-text: #1E824C;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   body{
-    background:
-      radial-gradient(1200px 600px at 15% -10%, rgba(245,166,35,0.06), transparent 60%),
-      radial-gradient(1000px 500px at 90% 0%, rgba(34,211,176,0.06), transparent 60%),
-      var(--bg);
+    background:var(--bg);
     color:var(--text);
     font-family:'Inter', sans-serif;
     min-height:100vh;
     padding-bottom:60px;
   }
-  .ticker{
-    background:var(--panel-2);
-    border-bottom:1px solid var(--border);
-    overflow:hidden;
-    white-space:nowrap;
-    padding:8px 0;
-  }
-  .ticker-track{
-    display:inline-block;
-    animation: scroll 32s linear infinite;
-    font-family:'JetBrains Mono', monospace;
-    font-size:13px;
-    letter-spacing:0.02em;
-  }
-  .ticker-track span{ margin-right:48px; color:var(--muted); }
-  .ticker-track span b{ color:var(--teal); font-weight:600; }
-  @keyframes scroll{
-    0%{ transform:translateX(0); }
-    100%{ transform:translateX(-50%); }
-  }
 
   header{
-    padding:36px 48px 24px;
+    padding:28px 40px 20px;
+    border-bottom:1px solid var(--border);
+    background:var(--panel);
+  }
+  .wordmark{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:15px;
+    color:var(--blue);
+    letter-spacing:0.02em;
+    text-transform:uppercase;
+  }
+  .wordmark span{ color:var(--text); font-weight:600; text-transform:none; }
+  h1{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    font-size:26px;
+    margin-top:4px;
+    letter-spacing:-0.01em;
+  }
+  .header-row{
     display:flex;
     justify-content:space-between;
     align-items:flex-end;
     flex-wrap:wrap;
     gap:16px;
-    border-bottom:1px solid var(--border);
   }
-  .eyebrow{
-    font-family:'JetBrains Mono', monospace;
-    font-size:12px;
-    color:var(--teal);
-    letter-spacing:0.12em;
-    text-transform:uppercase;
-    margin-bottom:8px;
-  }
-  h1{
-    font-family:'Space Grotesk', sans-serif;
-    font-weight:600;
-    font-size:32px;
-    letter-spacing:-0.01em;
-  }
-  .meta{
-    text-align:right;
-    font-size:13px;
-    color:var(--muted);
-  }
+  .meta{ text-align:right; font-size:12.5px; color:var(--muted); }
   .refresh-btn{
     background:var(--panel);
     border:1px solid var(--border);
@@ -88,54 +67,49 @@
     font-family:'Inter', sans-serif;
     font-size:13px;
     font-weight:500;
-    padding:9px 16px;
+    padding:8px 14px;
     border-radius:8px;
     cursor:pointer;
     margin-top:6px;
-    transition:border-color 0.15s;
+    transition:border-color 0.15s, background 0.15s;
   }
-  .refresh-btn:hover{ border-color:var(--teal); }
-  .refresh-btn:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
+  .refresh-btn:hover{ border-color:var(--blue); background:#F7F8FF; }
+  .refresh-btn:focus-visible{ outline:2px solid var(--blue); outline-offset:2px; }
 
   .filter-bar{
     display:flex;
-    gap:24px;
+    gap:28px;
     flex-wrap:wrap;
-    padding:18px 48px;
-    background:var(--panel-2);
+    align-items:center;
+    padding:16px 40px;
+    background:var(--panel);
     border-bottom:1px solid var(--border);
   }
-  .filter-group{
-    display:flex;
-    flex-direction:column;
-    gap:6px;
+  .filter-group{ display:flex; flex-direction:column; gap:7px; }
+  .filter-group .filter-label{
+    font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; font-weight:600;
   }
-  .filter-group label{
-    font-size:11px;
-    color:var(--muted);
-    text-transform:uppercase;
-    letter-spacing:0.06em;
+  .tab-set{ display:flex; gap:4px; background:#EEF0F3; border-radius:9px; padding:3px; }
+  .tab-set button{
+    border:none; background:transparent; color:var(--muted);
+    font-family:'Inter', sans-serif; font-size:13px; font-weight:500;
+    padding:6px 14px; border-radius:7px; cursor:pointer; transition:all 0.12s;
   }
+  .tab-set button:hover{ color:var(--text); }
+  .tab-set button.active{ background:var(--text); color:#fff; }
   .filter-group select{
-    background:var(--panel);
-    border:1px solid var(--border);
-    color:var(--text);
-    font-family:'Inter', sans-serif;
-    font-size:13px;
-    padding:7px 10px;
-    border-radius:8px;
-    min-width:170px;
-    cursor:pointer;
+    background:var(--panel); border:1px solid var(--border); color:var(--text);
+    font-family:'Inter', sans-serif; font-size:13px; padding:7px 10px; border-radius:8px;
+    min-width:120px; cursor:pointer;
   }
-  .filter-group select:focus-visible{ outline:2px solid var(--teal); outline-offset:1px; }
 
-  main{ padding:36px 48px; max-width:1400px; margin:0 auto; }
+  main{ padding:32px 40px; max-width:1400px; margin:0 auto; }
 
   .kpi-row{
     display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));
     gap:16px;
-    margin-bottom:40px;
+    margin-bottom:32px;
   }
   .kpi{
     background:var(--panel);
@@ -146,107 +120,77 @@
     overflow:hidden;
   }
   .kpi::before{
-    content:'';
-    position:absolute; top:0; left:0; width:3px; height:100%;
-    background:var(--accent, var(--teal));
+    content:''; position:absolute; top:0; left:0; width:4px; height:100%;
+    background:var(--accent, var(--blue));
   }
   .kpi-label{
-    font-size:12px;
-    color:var(--muted);
-    text-transform:uppercase;
-    letter-spacing:0.08em;
-    margin-bottom:10px;
+    font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; font-weight:600; margin-bottom:10px;
   }
-  .kpi-value{
-    font-family:'JetBrains Mono', monospace;
-    font-size:28px;
-    font-weight:600;
-  }
-  .kpi-sub{ font-size:12px; color:var(--muted); margin-top:6px; }
+  .kpi-value{ font-family:'Space Grotesk', sans-serif; font-size:27px; font-weight:600; }
+  .kpi-sub{ font-size:12.5px; color:var(--muted); margin-top:6px; }
 
   .section{
     background:var(--panel);
     border:1px solid var(--border);
     border-radius:14px;
-    padding:28px 28px 20px;
-    margin-bottom:28px;
+    padding:26px 26px 18px;
+    margin-bottom:24px;
   }
   .section-head{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    margin-bottom:20px;
-    flex-wrap:wrap;
-    gap:12px;
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:18px; flex-wrap:wrap; gap:12px;
   }
-  .section-title{
-    font-family:'Space Grotesk', sans-serif;
-    font-size:18px;
-    font-weight:600;
+  .section-title{ font-family:'Space Grotesk', sans-serif; font-size:17px; font-weight:600; }
+  .live-pill{
+    display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600;
+    background:var(--green-pill-bg); color:var(--green-pill-text); padding:3px 9px; border-radius:20px;
+    margin-left:8px; text-transform:uppercase; letter-spacing:0.03em;
   }
+  .live-pill::before{ content:''; width:6px; height:6px; border-radius:50%; background:var(--green-pill-text); }
   .section-note{ font-size:12px; color:var(--muted); }
-  .legend-dot{
-    display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px;
-  }
-  .chart-wrap{ position:relative; height:360px; }
-  .chart-wrap.short{ height:280px; }
+  .legend-dot{ display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; }
+  .chart-wrap{ position:relative; height:280px; }
 
   .placeholder-card{
-    border:1px dashed var(--border);
-    border-radius:10px;
-    padding:24px;
-    text-align:center;
-    color:var(--muted);
-    font-size:13px;
-    line-height:1.6;
+    border:1px dashed var(--border); border-radius:10px; padding:22px; text-align:center;
+    color:var(--muted); font-size:13px; line-height:1.6;
   }
-  .placeholder-card b{ color:var(--gold); }
+  .placeholder-card b{ color:var(--orange); }
 
-  .status{
-    font-family:'JetBrains Mono', monospace;
-    font-size:12px;
-    color:var(--muted);
-    padding:60px 0;
-    text-align:center;
-  }
-  .status.error{ color:var(--red); }
-
-  ::selection{ background:var(--teal); color:#0A0E1A; }
+  ::selection{ background:var(--blue); color:#fff; }
 
   @media (max-width:640px){
-    header, main{ padding-left:20px; padding-right:20px; }
-    h1{ font-size:24px; }
+    header, main, .filter-bar{ padding-left:20px; padding-right:20px; }
+    h1{ font-size:21px; }
   }
 </style>
 </head>
 <body>
 
-  <div class="ticker">
-    <div class="ticker-track" id="ticker">
-      <span>Loading live data…</span>
-    </div>
-  </div>
-
   <header>
-    <div>
-      <div class="eyebrow">Live · Auto-refreshing on load</div>
-      <h1>Sales &amp; Pipeline Dashboard</h1>
-    </div>
-    <div class="meta">
-      <div id="lastRefreshed">Loading…</div>
-      <button class="refresh-btn" onclick="loadAll()">↻ Refresh now</button>
+    <div class="header-row">
+      <div>
+        <div class="wordmark">ANTIER <span>· Sales &amp; Pipeline Dashboard</span></div>
+        <h1>Live Command Centre</h1>
+      </div>
+      <div class="meta">
+        <div id="lastRefreshed">Loading…</div>
+        <button class="refresh-btn" onclick="loadAll()">↻ Refresh now</button>
+      </div>
     </div>
   </header>
 
   <div class="filter-bar">
     <div class="filter-group">
-      <label>Bookings / Receipts period</label>
-      <select id="bookingPeriodFilter" onchange="applyBookingFilter()">
-        <option value="All">All periods</option>
-      </select>
+      <div class="filter-label">Quarter</div>
+      <div class="tab-set" id="quarterTabs"></div>
     </div>
     <div class="filter-group">
-      <label>EWMS quarter</label>
+      <div class="filter-label">Financial Year (Apr–Mar)</div>
+      <div class="tab-set" id="fyTabs"></div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">EWMS quarter</div>
       <select id="ewmsQuarterFilter" onchange="loadEwms()">
         <option value="Q1">Q1</option>
         <option value="Q2" selected>Q2</option>
@@ -255,7 +199,7 @@
       </select>
     </div>
     <div class="filter-group">
-      <label>EWMS year</label>
+      <div class="filter-label">EWMS year</div>
       <select id="ewmsYearFilter" onchange="loadEwms()">
         <option value="2024">2024</option>
         <option value="2025">2025</option>
@@ -268,12 +212,12 @@
   <main>
 
     <div class="kpi-row" id="kpiRow">
-      <div class="kpi" style="--accent:var(--gold)">
+      <div class="kpi" style="--accent:var(--orange)">
         <div class="kpi-label">Total Bookings</div>
         <div class="kpi-value" id="kpiBookings">—</div>
         <div class="kpi-sub">All fresh &amp; upsell deals closed</div>
       </div>
-      <div class="kpi" style="--accent:var(--sky)">
+      <div class="kpi" style="--accent:var(--blue)">
         <div class="kpi-label">Total Receipts</div>
         <div class="kpi-value" id="kpiReceipts">—</div>
         <div class="kpi-sub">Payments actually collected</div>
@@ -287,9 +231,9 @@
 
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Bookings vs Pipeline — by Sales Person</div>
+        <div><span class="section-title">Bookings vs Pipeline — by Sales Person</span><span class="live-pill">Live</span></div>
         <div class="section-note">
-          <span class="legend-dot" style="background:var(--gold)"></span>Booking
+          <span class="legend-dot" style="background:var(--orange)"></span>Booking
           <span class="legend-dot" style="background:var(--teal); margin-left:14px;"></span>Pipeline (Proposal Shared)
         </div>
       </div>
@@ -298,25 +242,23 @@
 
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Receipts by Delivery Head</div>
-        <div class="section-note">
-          <span class="legend-dot" style="background:var(--sky)"></span>Receipt collected
-        </div>
+        <div><span class="section-title">Receipts by Delivery Head</span><span class="live-pill">Live</span></div>
+        <div class="section-note"><span class="legend-dot" style="background:var(--blue)"></span>Receipt collected</div>
       </div>
-      <div class="chart-wrap short"><canvas id="chartReceipts"></canvas></div>
+      <div class="chart-wrap"><canvas id="chartReceipts"></canvas></div>
     </div>
 
     <div class="section">
       <div class="section-head">
-        <div class="section-title">Projection by Delivery Head — EWMS</div>
+        <div><span class="section-title">Projection by Delivery Head — EWMS</span><span class="live-pill">Live</span></div>
         <div class="section-note">
           <span class="legend-dot" style="background:var(--teal)"></span>Received
-          <span class="legend-dot" style="background:var(--gold); margin-left:14px;"></span>Pending
+          <span class="legend-dot" style="background:var(--orange); margin-left:14px;"></span>Pending
           <span id="ewmsQuarterLabel" style="margin-left:14px;"></span>
         </div>
       </div>
       <div id="ewmsErrorCard" class="placeholder-card" style="display:none;"></div>
-      <div class="chart-wrap short" id="ewmsChartWrap"><canvas id="chartEwms"></canvas></div>
+      <div class="chart-wrap" id="ewmsChartWrap"><canvas id="chartEwms"></canvas></div>
     </div>
 
   </main>
@@ -328,13 +270,12 @@ const PIPELINE_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkA
 function ewmsApiUrl(){
   const quarter = document.getElementById('ewmsQuarterFilter').value;
   const year = document.getElementById('ewmsYearFilter').value;
-  // Calls our own same-origin proxy (api/ewms.js) instead of EWMS directly,
-  // which avoids the browser CORS restriction on api-ewms.antiers.work.
   return `/api/ewms?quarter=${encodeURIComponent(quarter)}&year=${encodeURIComponent(year)}`;
 }
 
 let chartSales, chartReceipts, chartEwms;
 let rawBookingRows = [], rawPipelineRows = [];
+let selectedQuarter = 'All', selectedFY = 'All';
 
 function fmtMoney(n){
   if (!isFinite(n)) return "$0";
@@ -343,9 +284,7 @@ function fmtMoney(n){
   if (abs >= 1_000) return "$" + (n/1_000).toFixed(1) + "K";
   return "$" + n.toFixed(0);
 }
-function fmtFull(n){
-  return "$" + Math.round(n).toLocaleString("en-US");
-}
+function fmtFull(n){ return "$" + Math.round(n).toLocaleString("en-US"); }
 function normName(name){
   if (!name) return "";
   return name.trim().toLowerCase().split(/\s+/)[0];
@@ -359,9 +298,7 @@ function parseNum(v){
 
 async function fetchCsv(url){
   const response = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} fetching ${url}`);
-  }
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
   const text = await response.text();
   const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
   return parsed.data;
@@ -369,9 +306,7 @@ async function fetchCsv(url){
 
 async function fetchJson(url){
   const response = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} fetching ${url}`);
-  }
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
   return response.json();
 }
 
@@ -381,7 +316,7 @@ function showError(message){
   if (!box) {
     box = document.createElement('div');
     box.id = 'errorBox';
-    box.style.cssText = 'margin-top:8px; padding:10px 14px; background:rgba(239,91,91,0.1); border:1px solid var(--red); border-radius:8px; font-family:JetBrains Mono, monospace; font-size:12px; color:var(--red); max-width:420px; text-align:left;';
+    box.style.cssText = 'margin-top:8px; padding:10px 14px; background:#FDECEC; border:1px solid var(--red); border-radius:8px; font-family:JetBrains Mono, monospace; font-size:12px; color:var(--red); max-width:420px; text-align:left;';
     document.querySelector('.meta').appendChild(box);
   }
   box.textContent = message;
@@ -399,12 +334,11 @@ async function loadAll(){
     ]);
     rawBookingRows = bookingRows;
     rawPipelineRows = pipelineRows;
-    populateBookingPeriods(bookingRows);
+    buildFilterTabs(bookingRows);
     applyBookingFilter();
     const now = new Date();
     document.getElementById('lastRefreshed').textContent =
-      "Last refreshed " + now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) +
-      " · " + now.toLocaleDateString();
+      "Last refreshed " + now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) + " · " + now.toLocaleDateString();
   } catch (err) {
     console.error(err);
     showError(err.message || String(err));
@@ -413,23 +347,43 @@ async function loadAll(){
   await loadEwms();
 }
 
-function populateBookingPeriods(bookingRows){
-  const select = document.getElementById('bookingPeriodFilter');
-  const current = select.value;
-  const periods = Array.from(new Set(bookingRows.map(r => (r["Quarter"] || "").trim()).filter(Boolean)));
-  // Sort by FY then quarter number, most recent first
-  periods.sort().reverse();
-  select.innerHTML = '<option value="All">All periods</option>' +
-    periods.map(p => `<option value="${p}">${p}</option>`).join('');
-  if (periods.includes(current)) select.value = current;
+// Builds the Quarter (Q1-Q4) and Financial Year tab buttons from the data.
+// The sheet's "Quarter" column looks like "Q1 FY 2025-2026" and the "FY"
+// column looks like "2025-2026" — we split these into two independent filters.
+function buildFilterTabs(bookingRows){
+  const quarters = ['All', 'Q1', 'Q2', 'Q3', 'Q4'];
+  const fyValues = Array.from(new Set(bookingRows.map(r => (r["FY"] || "").trim()).filter(Boolean))).sort();
+  const fys = ['All', ...fyValues];
+
+  const qContainer = document.getElementById('quarterTabs');
+  qContainer.innerHTML = quarters.map(q =>
+    `<button data-val="${q}" class="${q === selectedQuarter ? 'active' : ''}" onclick="setQuarter('${q}')">${q}</button>`
+  ).join('');
+
+  const fyContainer = document.getElementById('fyTabs');
+  if (!fyValues.includes(selectedFY) && selectedFY !== 'All') selectedFY = 'All';
+  fyContainer.innerHTML = fys.map(fy =>
+    `<button data-val="${fy}" class="${fy === selectedFY ? 'active' : ''}" onclick="setFY('${fy}')">${fy === 'All' ? 'All' : 'FY ' + fy}</button>`
+  ).join('');
+}
+
+function setQuarter(q){ selectedQuarter = q; refreshTabStyles(); applyBookingFilter(); }
+function setFY(fy){ selectedFY = fy; refreshTabStyles(); applyBookingFilter(); }
+function refreshTabStyles(){
+  document.querySelectorAll('#quarterTabs button').forEach(b => b.classList.toggle('active', b.dataset.val === selectedQuarter));
+  document.querySelectorAll('#fyTabs button').forEach(b => b.classList.toggle('active', b.dataset.val === selectedFY));
 }
 
 function applyBookingFilter(){
-  const selected = document.getElementById('bookingPeriodFilter').value;
-  const filteredBookings = selected === 'All'
-    ? rawBookingRows
-    : rawBookingRows.filter(r => (r["Quarter"] || "").trim() === selected);
-  render(filteredBookings, rawPipelineRows);
+  const filtered = rawBookingRows.filter(row => {
+    const quarterStr = (row["Quarter"] || "").trim(); // e.g. "Q1 FY 2025-2026"
+    const fyStr = (row["FY"] || "").trim();            // e.g. "2025-2026"
+    const quarterToken = quarterStr.split(" ")[0];      // "Q1"
+    const quarterOk = selectedQuarter === 'All' || quarterToken === selectedQuarter;
+    const fyOk = selectedFY === 'All' || fyStr === selectedFY;
+    return quarterOk && fyOk;
+  });
+  render(filtered, rawPipelineRows);
 }
 
 async function loadEwms(){
@@ -443,8 +397,20 @@ async function loadEwms(){
     card.style.display = 'block';
     wrap.style.display = 'none';
     card.innerHTML = `Could not load EWMS data: <b>${err.message || err}</b><br>`
-      + `If you just deployed the api/ewms.js proxy file, make sure it's committed to the repo root under an "api" folder — Vercel needs that exact path to detect it as a serverless function.`;
+      + `Check Vercel Project Settings → Root Directory, and confirm api/ewms.js shows up under the deployment's Functions tab.`;
   }
+}
+
+// Creates a horizontal gradient across the plotted bar area, used to match
+// the teal-to-orange gradient bar style from the reference dashboard.
+function barGradient(context, colorStart, colorEnd){
+  const { chart } = context;
+  const { ctx, chartArea } = chart;
+  if (!chartArea) return colorStart;
+  const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+  gradient.addColorStop(0, colorStart);
+  gradient.addColorStop(1, colorEnd);
+  return gradient;
 }
 
 function renderEwms(json){
@@ -469,7 +435,7 @@ function renderEwms(json){
   const heads = Object.keys(byHead).sort((a,b) => (byHead[b].received+byHead[b].pending) - (byHead[a].received+byHead[a].pending));
 
   const ctx = document.getElementById('chartEwms').getContext('2d');
-  document.getElementById('chartEwms').parentElement.style.height = Math.max(240, heads.length * 34 + 60) + 'px';
+  document.getElementById('chartEwms').parentElement.style.height = Math.max(220, heads.length * 36 + 50) + 'px';
   if (chartEwms) chartEwms.destroy();
   const opts = chartOptions(true);
   chartEwms = new Chart(ctx, {
@@ -477,8 +443,8 @@ function renderEwms(json){
     data: {
       labels: heads,
       datasets: [
-        { label: 'Received', data: heads.map(h => byHead[h].received), backgroundColor: '#22D3B0', borderRadius: 4, maxBarThickness: 22, stack: 's' },
-        { label: 'Pending', data: heads.map(h => byHead[h].pending), backgroundColor: '#F5A623', borderRadius: 4, maxBarThickness: 22, stack: 's' }
+        { label: 'Received', data: heads.map(h => byHead[h].received), backgroundColor: (c) => barGradient(c, '#8FD9C9', '#2F8F7C'), borderRadius: 5, maxBarThickness: 20, stack: 's' },
+        { label: 'Pending', data: heads.map(h => byHead[h].pending), backgroundColor: (c) => barGradient(c, '#E8B08E', '#C1653D'), borderRadius: 5, maxBarThickness: 20, stack: 's' }
       ]
     },
     options: { ...opts, scales: { ...opts.scales, x: { ...opts.scales.x, stacked: true }, y: { ...opts.scales.y, stacked: true } } }
@@ -486,7 +452,6 @@ function renderEwms(json){
 }
 
 function render(bookingRows, pipelineRows){
-  // ---- Bookings by Sales Person ----
   const bookingBySales = {};
   let totalBooking = 0, totalReceipt = 0;
   const receiptByOwner = {};
@@ -497,31 +462,22 @@ function render(bookingRows, pipelineRows){
     const receipt = parseNum(row["Receipt Amount"]);
     const owner = (row["Project Owner"] || "").trim();
 
-    if (sp && booking) {
-      bookingBySales[sp] = (bookingBySales[sp] || 0) + booking;
-    }
+    if (sp && booking) bookingBySales[sp] = (bookingBySales[sp] || 0) + booking;
     totalBooking += booking;
     totalReceipt += receipt;
-
-    if (owner) {
-      receiptByOwner[owner] = (receiptByOwner[owner] || 0) + receipt;
-    }
+    if (owner) receiptByOwner[owner] = (receiptByOwner[owner] || 0) + receipt;
   });
 
-  // ---- Pipeline by Lead Owner ----
   const pipelineByOwner = {};
   let totalPipeline = 0, pipelineCount = 0;
   pipelineRows.forEach(row => {
     const owner = (row["LeadOwner"] || "").trim();
     const val = parseNum(row["OrderValue"]);
-    if (owner) {
-      pipelineByOwner[owner] = (pipelineByOwner[owner] || 0) + val;
-    }
+    if (owner) pipelineByOwner[owner] = (pipelineByOwner[owner] || 0) + val;
     totalPipeline += val;
     pipelineCount++;
   });
 
-  // Match sales person -> pipeline owner by normalized first name
   const pipelineByNorm = {};
   Object.entries(pipelineByOwner).forEach(([owner, val]) => {
     pipelineByNorm[normName(owner)] = (pipelineByNorm[normName(owner)] || 0) + val;
@@ -531,7 +487,6 @@ function render(bookingRows, pipelineRows){
   const bookingVals = salesNames.map(n => bookingBySales[n]);
   const pipelineVals = salesNames.map(n => pipelineByNorm[normName(n)] || 0);
 
-  // ---- KPIs ----
   document.getElementById('kpiBookings').textContent = fmtMoney(totalBooking);
   document.getElementById('kpiBookings').title = fmtFull(totalBooking);
   document.getElementById('kpiReceipts').textContent = fmtMoney(totalReceipt);
@@ -540,74 +495,49 @@ function render(bookingRows, pipelineRows){
   document.getElementById('kpiPipeline').title = fmtFull(totalPipeline);
   document.getElementById('kpiPipelineCount').textContent = pipelineCount;
 
-  // ---- Ticker ----
-  const tickerParts = salesNames.slice(0, 10).map(n =>
-    `<span>${n}: <b>${fmtMoney(bookingBySales[n])}</b> booked${(pipelineByNorm[normName(n)]) ? " / " + fmtMoney(pipelineByNorm[normName(n)]) + " pipeline" : ""}</span>`
-  );
-  const tickerHtml = tickerParts.join("") + tickerParts.join(""); // duplicate for seamless loop
-  document.getElementById('ticker').innerHTML = tickerHtml || "<span>No data</span>";
-
-  // ---- Chart: Bookings vs Pipeline ----
   const ctx1 = document.getElementById('chartSales').getContext('2d');
-  document.getElementById('chartSales').parentElement.style.height = Math.max(280, salesNames.length * 34 + 60) + 'px';
+  document.getElementById('chartSales').parentElement.style.height = Math.max(240, salesNames.length * 36 + 50) + 'px';
   if (chartSales) chartSales.destroy();
   chartSales = new Chart(ctx1, {
     type: 'bar',
     data: {
       labels: salesNames,
       datasets: [
-        {
-          label: 'Booking',
-          data: bookingVals,
-          backgroundColor: '#F5A623',
-          borderRadius: 4,
-          maxBarThickness: 22
-        },
-        {
-          label: 'Pipeline (Proposal Shared)',
-          data: pipelineVals,
-          backgroundColor: '#22D3B0',
-          borderRadius: 4,
-          maxBarThickness: 22
-        }
+        { label: 'Booking', data: bookingVals, backgroundColor: (c) => barGradient(c, '#E8B08E', '#C1653D'), borderRadius: 5, maxBarThickness: 20 },
+        { label: 'Pipeline (Proposal Shared)', data: pipelineVals, backgroundColor: (c) => barGradient(c, '#8FD9C9', '#2F8F7C'), borderRadius: 5, maxBarThickness: 20 }
       ]
     },
     options: chartOptions(true)
   });
 
-  // ---- Chart: Receipts by Delivery Head ----
   const ownerNames = Object.keys(receiptByOwner).sort((a,b) => receiptByOwner[b]-receiptByOwner[a]);
   const ctx2 = document.getElementById('chartReceipts').getContext('2d');
-  document.getElementById('chartReceipts').parentElement.style.height = Math.max(240, ownerNames.length * 34 + 60) + 'px';
+  document.getElementById('chartReceipts').parentElement.style.height = Math.max(220, ownerNames.length * 36 + 50) + 'px';
   if (chartReceipts) chartReceipts.destroy();
   chartReceipts = new Chart(ctx2, {
     type: 'bar',
     data: {
       labels: ownerNames,
-      datasets: [{
-        label: 'Receipt collected',
-        data: ownerNames.map(n => receiptByOwner[n]),
-        backgroundColor: '#4C9FE8',
-        borderRadius: 4,
-        maxBarThickness: 22
-      }]
+      datasets: [{ label: 'Receipt collected', data: ownerNames.map(n => receiptByOwner[n]), backgroundColor: (c) => barGradient(c, '#8FB8E8', '#3355DD'), borderRadius: 5, maxBarThickness: 20 }]
     },
     options: chartOptions(true)
   });
 }
 
 function chartOptions(horizontal){
-  const gridColor = 'rgba(255,255,255,0.06)';
-  const textColor = '#8B93A7';
+  const gridColor = '#EEF0F3';
+  const textColor = '#6B7280';
   const moneyTick = (v) => v >= 1000 ? "$" + (v/1000) + "K" : "$" + v;
 
   const categoryAxis = {
-    ticks: { color: textColor, font: { family: 'Inter', size: 11 } },
-    grid: { display: false }
+    ticks: { color: '#14171F', font: { family: 'Inter', size: 12, weight: '500' } },
+    grid: { display: false },
+    border: { display: false }
   };
   const valueAxis = {
     ticks: { color: textColor, font: { family: 'JetBrains Mono', size: 11 }, callback: moneyTick },
-    grid: { color: gridColor }
+    grid: { color: gridColor },
+    border: { display: false }
   };
 
   return {
@@ -618,20 +548,17 @@ function chartOptions(horizontal){
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: '#171F30',
-        borderColor: '#232B3D',
-        borderWidth: 1,
-        titleColor: '#E8ECF3',
-        bodyColor: '#E8ECF3',
+        backgroundColor: '#14171F',
+        borderColor: '#E3E6EB',
+        borderWidth: 0,
+        titleColor: '#fff',
+        bodyColor: '#fff',
         padding: 10,
-        callbacks: {
-          label: (c) => c.dataset.label + ": $" + Math.round(c.raw).toLocaleString("en-US")
-        }
+        cornerRadius: 6,
+        callbacks: { label: (c) => c.dataset.label + ": $" + Math.round(c.raw).toLocaleString("en-US") }
       }
     },
-    scales: horizontal
-      ? { x: valueAxis, y: categoryAxis }
-      : { x: categoryAxis, y: valueAxis }
+    scales: horizontal ? { x: valueAxis, y: categoryAxis } : { x: categoryAxis, y: valueAxis }
   };
 }
 
