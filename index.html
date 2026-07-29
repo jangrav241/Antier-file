@@ -124,6 +124,15 @@
 
   main{ padding:32px 40px; max-width:1400px; margin:0 auto; }
 
+  .dashboard-tabs{ display:flex; gap:8px; margin-bottom:24px; }
+  .dash-tab{
+    background:var(--panel); border:1px solid var(--border); color:var(--muted);
+    font-family:'Space Grotesk', sans-serif; font-weight:600; font-size:14px;
+    padding:11px 22px; border-radius:11px; cursor:pointer; transition:all 0.15s;
+  }
+  .dash-tab:hover{ color:var(--text); border-color:var(--blue); }
+  .dash-tab.active{ background:var(--text); color:#fff; border-color:var(--text); }
+
   .kpi-row{
     display:grid;
     grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));
@@ -182,6 +191,15 @@
   .chart-scroll::-webkit-scrollbar-thumb{ background:#D5D9E0; border-radius:4px; }
   .chart-wrap{ position:relative; }
 
+  .section-export{
+    display:flex; justify-content:flex-end; margin-top:14px; padding-top:12px; border-top:1px solid #F0F1F3;
+  }
+  .export-mini{
+    font-size:11.5px; padding:5px 12px; border:1px solid var(--border); border-radius:7px;
+    background:#FAFAFB; cursor:pointer; color:var(--muted); font-family:'Inter', sans-serif; transition:all 0.12s;
+  }
+  .export-mini:hover{ color:var(--blue); border-color:var(--blue); background:#F7F8FF; }
+
   .placeholder-card{
     border:1px dashed var(--border); border-radius:10px; padding:22px; text-align:center;
     color:var(--muted); font-size:13px; line-height:1.6;
@@ -206,7 +224,7 @@
   ::selection{ background:var(--blue); color:#fff; }
 
   @media print{
-    .filter-bar, .refresh-btn, .currency-bar{ display:none !important; }
+    .filter-bar, .refresh-btn, .currency-bar, .section-export, .dashboard-tabs{ display:none !important; }
   }
 
   @media (max-width:640px){
@@ -238,6 +256,7 @@
         <button data-val="USD" class="active" onclick="setCurrency('USD')">$ USD</button>
       </div>
       <button class="refresh-btn" onclick="window.print()">Print / PDF</button>
+      <button class="refresh-btn" onclick="exportSummary()">⬇ Export Summary</button>
     </div>
   </header>
 
@@ -261,104 +280,168 @@
 
   <main>
 
-    <div class="kpi-row" id="kpiRow">
-      <div class="kpi" style="--accent:var(--orange)">
-        <div class="kpi-label">Total Bookings</div>
-        <div class="kpi-value" id="kpiBookings">—</div>
-        <div class="kpi-sub">All fresh &amp; upsell deals closed</div>
-      </div>
-      <div class="kpi" style="--accent:var(--blue)">
-        <div class="kpi-label">Total Receipts</div>
-        <div class="kpi-value" id="kpiReceipts">—</div>
-        <div class="kpi-sub">Payments actually collected</div>
-      </div>
-      <div class="kpi" style="--accent:var(--teal)">
-        <div class="kpi-label">Pipeline (Proposal Shared)</div>
-        <div class="kpi-value" id="kpiPipeline">—</div>
-        <div class="kpi-sub"><span id="kpiPipelineCount">—</span> open opportunities</div>
-      </div>
-      <div class="kpi" style="--accent:var(--blue)">
-        <div class="kpi-label">Unique Clients (New)</div>
-        <div class="kpi-value" id="kpiUniqueClients">—</div>
-        <div class="kpi-sub">Distinct clients where Cx Category = "New"</div>
-      </div>
-      <div class="kpi" style="--accent:var(--orange)">
-        <div class="kpi-label">Kick-off % Ratio</div>
-        <div class="kpi-value" id="kpiKickoffPct">—</div>
-        <div class="kpi-sub">Fresh receipts collected vs Fresh booked, company-wide</div>
-      </div>
+    <div class="dashboard-tabs">
+      <button class="dash-tab active" data-dash="sales" onclick="switchDashboard('sales')">Sales</button>
+      <button class="dash-tab" data-dash="receipt" onclick="switchDashboard('receipt')">Receipt</button>
+      <button class="dash-tab" data-dash="bank" onclick="switchDashboard('bank')">Bank (Treasury)</button>
+      <button class="dash-tab" data-dash="hr" onclick="switchDashboard('hr')">HR</button>
+      <button class="dash-tab" data-dash="performance" onclick="switchDashboard('performance')">Performance</button>
     </div>
 
-    <div class="section">
-      <div class="section-head">
-        <div><span class="section-title">Export Data</span></div>
-      </div>
-      <div class="section-desc">Download the raw data behind each chart, or an overall summary. "Current view" exports respect your active Quarter / FY / Sales Person filters.</div>
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <button class="refresh-btn" onclick="exportBookings()">⬇ Bookings (current view)</button>
-        <button class="refresh-btn" onclick="exportPipeline()">⬇ Pipeline (raw)</button>
-        <button class="refresh-btn" onclick="exportEwms()">⬇ EWMS Projection (raw)</button>
-        <button class="refresh-btn" onclick="exportSummary()">⬇ Dashboard Summary</button>
-      </div>
-    </div>
+    <!-- ============ SALES DASHBOARD ============ -->
+    <div id="salesDashboardView">
 
-    <div class="section">
-      <div class="section-head">
-        <div><span class="section-title">Bookings vs Pipeline — by Sales Person</span><span class="live-pill">Live</span></div>
-        <div class="section-note">
-          <span class="legend-dot" style="background:#1E824C"></span>Booking (Achieved)
-          <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Pipeline (Projection)
+      <div class="kpi-row" id="kpiRow">
+        <div class="kpi" style="--accent:var(--orange)">
+          <div class="kpi-label">Total Bookings</div>
+          <div class="kpi-value" id="kpiBookings">—</div>
+          <div class="kpi-sub">All fresh &amp; upsell deals closed</div>
+        </div>
+        <div class="kpi" style="--accent:var(--teal)">
+          <div class="kpi-label">Pipeline (Proposal Shared)</div>
+          <div class="kpi-value" id="kpiPipeline">—</div>
+          <div class="kpi-sub"><span id="kpiPipelineCount">—</span> open opportunities</div>
+        </div>
+        <div class="kpi" style="--accent:var(--blue)">
+          <div class="kpi-label">Unique Clients (New)</div>
+          <div class="kpi-value" id="kpiUniqueClients">—</div>
+          <div class="kpi-sub">Distinct clients where Cx Category = "New"</div>
+        </div>
+        <div class="kpi" style="--accent:var(--orange)">
+          <div class="kpi-label">Kick-off % Ratio</div>
+          <div class="kpi-value" id="kpiKickoffPct">—</div>
+          <div class="kpi-sub">Fresh receipts collected vs Fresh booked, company-wide</div>
         </div>
       </div>
-      <div class="section-desc">All active sales reps shown, including those with $0 booking or pipeline in the current filter.</div>
-      <div class="chart-scroll"><div class="chart-wrap" id="salesChartWrap"><canvas id="chartSales"></canvas></div></div>
-    </div>
 
-    <div class="section">
-      <div class="section-head">
-        <div><span class="section-title">Kick-off Rate by Rep</span><span class="live-pill">Live</span></div>
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Bookings vs Pipeline — by Sales Person</span><span class="live-pill">Live</span></div>
+          <div class="section-note">
+            <span class="legend-dot" style="background:#1E824C"></span>Booking (Achieved)
+            <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Pipeline (Projection)
+          </div>
+        </div>
+        <div class="section-desc">All active sales reps shown, including those with $0 booking or pipeline in the current filter.</div>
+        <div class="chart-scroll"><div class="chart-wrap" id="salesChartWrap"><canvas id="chartSales"></canvas></div></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('bookings_vs_pipeline.csv', lastSalesChartRows)">⬇ Export CSV</button></div>
       </div>
-      <div class="section-desc">Share of Fresh booking value already collected as the kick-off payment (the receipt logged on the same row as the booking). Dashed line = company-wide average.</div>
-      <div class="chart-scroll"><div class="chart-wrap" id="kickoffChartWrap"><canvas id="chartKickoff"></canvas></div></div>
-    </div>
 
-    <div class="section">
-      <div class="section-head">
-        <div><span class="section-title">Sales Performance — Fresh / Crossell / Upsell</span><span class="live-pill">Live</span></div>
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Sales Performance — Fresh / Crossell / Upsell</span><span class="live-pill">Live</span></div>
+        </div>
+        <div class="section-desc">Booking value by category per sales person, plus kick-off collection against Fresh bookings. Milestone payments are excluded (recurring, not new business).</div>
+        <div id="salesPerfTableWrap" class="chart-scroll"></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('sales_performance.csv', lastSalesPerfRows)">⬇ Export CSV</button></div>
       </div>
-      <div class="section-desc">Booking value by category per sales person. Milestone payments are excluded (recurring, not new business).</div>
-      <div id="salesPerfTableWrap" class="chart-scroll"></div>
-    </div>
 
-    <div class="section">
-      <div class="section-head">
-        <div><span class="section-title">Receipts by Delivery Head</span><span class="live-pill">Live</span></div>
-        <div class="section-note"><span class="legend-dot" style="background:var(--blue)"></span>Receipt collected</div>
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Kick-off Rate by Rep</span><span class="live-pill">Live</span></div>
+        </div>
+        <div class="section-desc">Share of Fresh booking value already collected as the kick-off payment. Dashed line = company-wide average.</div>
+        <div class="chart-scroll"><div class="chart-wrap" id="kickoffChartWrap"><canvas id="chartKickoff"></canvas></div></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('kickoff_rate.csv', lastKickoffRows)">⬇ Export CSV</button></div>
       </div>
-      <div class="section-desc">All active delivery heads shown, including those with $0 receipts in the current filter.</div>
-      <div class="chart-scroll"><div class="chart-wrap" id="receiptsChartWrap"><canvas id="chartReceipts"></canvas></div></div>
+
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Open Pipeline — Leads at "Proposal Shared"</span><span class="live-pill">Live</span></div>
+        </div>
+        <div class="section-desc">LeadSquared CRM · grouped by Lead Owner · Age = days since lead was created. Status: Fresh ≤90d, Aging 91–180d, Stale &gt;180d.</div>
+        <div class="kpi-row" id="pipelineKpiRow" style="margin-bottom:16px;"></div>
+        <div id="pipelineTableWrap" class="chart-scroll"></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('open_pipeline_leads.csv', lastPipelineRows)">⬇ Export CSV</button></div>
+      </div>
+
     </div>
 
-    <div class="section">
-      <div class="section-head">
-        <div><span class="section-title">Projection by Delivery Head — EWMS</span><span class="live-pill">Live</span></div>
-        <div class="section-note">
-          <span class="legend-dot" style="background:#1E824C"></span>Received
-          <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Pending
-          <span id="ewmsQuarterLabel" style="margin-left:14px;"></span>
+    <!-- ============ RECEIPT DASHBOARD ============ -->
+    <div id="receiptDashboardView" style="display:none;">
+
+      <div class="kpi-row" style="margin-bottom:24px;">
+        <div class="kpi" style="--accent:var(--blue)">
+          <div class="kpi-label">Total Receipts</div>
+          <div class="kpi-value" id="kpiTotalReceiptsLocal">—</div>
+          <div class="kpi-sub">Payments actually collected, current filter</div>
+        </div>
+        <div class="kpi" style="--accent:var(--red)">
+          <div class="kpi-label">Total Projection</div>
+          <div class="kpi-value" id="kpiTotalProjectionLocal">—</div>
+          <div class="kpi-sub">EWMS Received + Pending, all verticals</div>
         </div>
       </div>
-      <div id="ewmsErrorCard" class="placeholder-card" style="display:none;"></div>
-      <div class="chart-scroll"><div class="chart-wrap" id="ewmsChartWrap"><canvas id="chartEwms"></canvas></div></div>
+
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Receipts by Delivery Head</span><span class="live-pill">Live</span></div>
+          <div class="section-note"><span class="legend-dot" style="background:var(--blue)"></span>Receipt collected</div>
+        </div>
+        <div class="section-desc">All delivery-head verticals shown, including those with $0 receipts in the current filter.</div>
+        <div class="chart-scroll"><div class="chart-wrap" id="receiptsChartWrap"><canvas id="chartReceipts"></canvas></div></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('receipts_by_delivery_head.csv', lastReceiptsChartRows)">⬇ Export CSV</button></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Projection by Delivery Head — EWMS</span><span class="live-pill">Live</span></div>
+          <div class="section-note">
+            <span class="legend-dot" style="background:#1E824C"></span>Received
+            <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Pending
+            <span id="ewmsQuarterLabel" style="margin-left:14px;"></span>
+          </div>
+        </div>
+        <div id="ewmsErrorCard" class="placeholder-card" style="display:none;"></div>
+        <div class="chart-scroll"><div class="chart-wrap" id="ewmsChartWrap"><canvas id="chartEwms"></canvas></div></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('ewms_projection.csv', lastEwmsChartRows)">⬇ Export CSV</button></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Receipts &amp; Projection Summary — by Delivery Head</span><span class="live-pill">Live</span></div>
+        </div>
+        <div class="section-desc">What's actually in hand (Receipts Collected) alongside what EWMS projects for the quarter (Received + Pending).</div>
+        <div id="summaryTableWrap" class="chart-scroll"></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('receipts_ewms_summary.csv', lastCombinedSummaryRows)">⬇ Export CSV</button></div>
+      </div>
+
     </div>
 
-    <div class="section">
-      <div class="section-head">
-        <div><span class="section-title">Open Pipeline — Leads at "Proposal Shared"</span><span class="live-pill">Live</span></div>
+    <!-- ============ BANK (TREASURY) — placeholder ============ -->
+    <div id="bankDashboardView" style="display:none;">
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Bank (Treasury)</span></div>
+        </div>
+        <div class="placeholder-card">
+          Not connected yet. Tell me what to pull in here — e.g. consolidated cash by entity/bank account, inflows vs outflows, runway — and which source has it (bank feed, accounting system, or a manual Google Sheet), and I'll wire it up the same way as Sales and Receipts.
+        </div>
       </div>
-      <div class="section-desc">LeadSquared CRM · grouped by Lead Owner · Age = days since lead was created. Status: Fresh ≤90d, Aging 91–180d, Stale &gt;180d.</div>
-      <div class="kpi-row" id="pipelineKpiRow" style="margin-bottom:16px;"></div>
-      <div id="pipelineTableWrap" class="chart-scroll"></div>
+    </div>
+
+    <!-- ============ HR — placeholder ============ -->
+    <div id="hrDashboardView" style="display:none;">
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">HR</span></div>
+        </div>
+        <div class="placeholder-card">
+          Not connected yet. Tell me what to pull in here — e.g. headcount by department, attrition, hiring pipeline — and which system has it (HRMS, spreadsheet, etc.), and I'll wire it up the same way as Sales and Receipts.
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ PERFORMANCE — placeholder ============ -->
+    <div id="performanceDashboardView" style="display:none;">
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Performance</span></div>
+        </div>
+        <div class="placeholder-card">
+          Not connected yet. Tell me what "Performance" should mean here — e.g. per-employee KPIs, department scorecards, OKR tracking — and which source has it, and I'll wire it up the same way as Sales and Receipts.
+        </div>
+      </div>
     </div>
 
   </main>
@@ -370,13 +453,22 @@ const EWMS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp
 
 let chartSales, chartReceipts, chartEwms, chartKickoff;
 let rawBookingRows = [], rawPipelineRows = [], rawEwmsRows = [];
-let selectedQuarter = 'All', selectedFY = 'All';
-let salesPersonFilter = 'Active'; // 'All' | 'Active' — defaults to Active per latest request
-const ACTIVE_SALES_PERSONS = ['Arun', 'Gurmukh', 'Sunil', 'Gaurav', 'Bhaskar', 'Jasvinder', 'Daljinder', 'Rajeev', 'Nitin Sokhey'];
+
+// Defaults: current quarter/FY (today falls in Q2 FY2026-2027) and Active sales reps only.
+let selectedQuarter = 'Q2', selectedFY = '2026-2027';
+let salesPersonFilter = 'Active'; // 'All' | 'Active'
+const ACTIVE_SALES_PERSONS = ['Arun', 'Gurmukh', 'Sunil', 'Gaurav', 'Bhaskar', 'Jasvinder', 'Daljinder', 'Rajeev', 'Nitin Sokhey', 'Management'];
 const ACTIVE_SALES_PERSONS_LC = ACTIVE_SALES_PERSONS.map(n => n.toLowerCase());
 let currentCurrency = 'USD';
 let exchangeRate = 84.0;
 let lastFilteredBookingRows = [];
+let lastTotalReceipt = 0, lastTotalProjection = 0;
+let lastReceiptByOwner = {}, lastEwmsByHead = {};
+
+// Export caches — populated by each render function, read by the per-section export buttons
+let lastSalesChartRows = [], lastKickoffRows = [], lastSalesPerfRows = [];
+let lastFreshBookingBySales = {}, lastKickoffReceiptBySales = {};
+let lastReceiptsChartRows = [], lastEwmsChartRows = [], lastCombinedSummaryRows = [], lastPipelineRows = [];
 
 // Some people appear under a short name in Bookings/EWMS ("Gagan") and a full
 // name elsewhere ("Gagandeep Singh") — these are the same person. Canonicalize
@@ -396,9 +488,8 @@ function canonicalDeliveryHead(name){
   return DELIVERY_HEAD_ALIASES[key] || (name || '').trim();
 }
 
-// Full department roster (from the org's Department/Delivery Head sheet) —
-// this is the fixed universe used for the Receipts and EWMS charts, so every
-// vertical shows even when it has $0 in the current data.
+// Full department roster — fixed universe used for Receipts/EWMS charts so
+// every vertical shows even at $0.
 const DELIVERY_HEAD_DEPARTMENTS = {
   'Karan Bhai': ['DeFI'],
   'Gagan': ['CeFI'],
@@ -416,6 +507,9 @@ const CANONICAL_DELIVERY_HEADS = Object.keys(DELIVERY_HEAD_DEPARTMENTS);
 function deliveryHeadTickLabel(name){
   const depts = DELIVERY_HEAD_DEPARTMENTS[name];
   return depts ? [name, `(${depts.join(', ')})`] : [name];
+}
+function departmentStringFor(name){
+  return (DELIVERY_HEAD_DEPARTMENTS[name] || []).join(', ');
 }
 
 Chart.register(ChartDataLabels);
@@ -464,6 +558,15 @@ function getSalesRoster(){
   return all;
 }
 
+// ---------- Dashboard tab switching ----------
+function switchDashboard(which){
+  const views = { sales: 'salesDashboardView', receipt: 'receiptDashboardView', bank: 'bankDashboardView', hr: 'hrDashboardView', performance: 'performanceDashboardView' };
+  Object.entries(views).forEach(([key, id]) => {
+    document.getElementById(id).style.display = (key === which) ? 'block' : 'none';
+  });
+  document.querySelectorAll('.dash-tab').forEach(b => b.classList.toggle('active', b.dataset.dash === which));
+}
+
 // ---------- Fetching ----------
 async function fetchCsv(url){
   const response = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
@@ -496,14 +599,12 @@ function downloadCsv(filename, rows){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
-function exportBookings(){ downloadCsv('bookings_current_view.csv', lastFilteredBookingRows); }
-function exportPipeline(){ downloadCsv('pipeline_raw.csv', rawPipelineRows); }
-function exportEwms(){ downloadCsv('ewms_projection_raw.csv', rawEwmsRows); }
 function exportSummary(){
   const summary = [
     { Metric: 'Total Bookings', Value: document.getElementById('kpiBookings').title || document.getElementById('kpiBookings').textContent },
-    { Metric: 'Total Receipts', Value: document.getElementById('kpiReceipts').title || document.getElementById('kpiReceipts').textContent },
+    { Metric: 'Total Receipts', Value: fmtCurrencyFull(lastTotalReceipt) },
     { Metric: 'Pipeline (Proposal Shared)', Value: document.getElementById('kpiPipeline').title || document.getElementById('kpiPipeline').textContent },
+    { Metric: 'Total Projection (EWMS)', Value: fmtCurrencyFull(lastTotalProjection) },
     { Metric: 'Unique Clients (New)', Value: document.getElementById('kpiUniqueClients').textContent },
     { Metric: 'Kick-off % Ratio', Value: document.getElementById('kpiKickoffPct').textContent },
     { Metric: 'Currency', Value: currentCurrency + (currentCurrency === 'INR' ? ` (rate: 1 USD = ${exchangeRate} INR)` : '') },
@@ -601,7 +702,6 @@ function applyBookingFilter(){
 }
 
 function renderExtraKpis(bookingRows){
-  // Unique Client: distinct Client Name where Cx Category = "New"
   const newClientNames = new Set();
   bookingRows.forEach(row => {
     const cx = (row["Cx Category"] || "").trim().toLowerCase();
@@ -610,7 +710,6 @@ function renderExtraKpis(bookingRows){
   });
   document.getElementById('kpiUniqueClients').textContent = newClientNames.size;
 
-  // Overall Kick-off % (same methodology as the Kick-off chart, company-wide)
   let totalFresh = 0, totalKickoff = 0;
   bookingRows.forEach(row => {
     const category = (row["Sales Category"] || "").toLowerCase().trim();
@@ -748,6 +847,8 @@ function renderBookingsPipelineAndReceipts(bookingRows, pipelineRows){
     totalReceipt += receipt;
     if (owner) receiptByOwner[owner] = (receiptByOwner[owner] || 0) + receipt;
   });
+  lastTotalReceipt = totalReceipt;
+  lastReceiptByOwner = receiptByOwner;
 
   const pipelineByOwner = {};
   let totalPipeline = 0, pipelineCount = 0;
@@ -763,20 +864,19 @@ function renderBookingsPipelineAndReceipts(bookingRows, pipelineRows){
     pipelineByNorm[normName(owner)] = (pipelineByNorm[normName(owner)] || 0) + val;
   });
 
-  // Roster respects the Sales Person filter (All / Active Only), and always
-  // includes every rep in scope even at $0, so nobody silently disappears.
   const salesRoster = getSalesRoster()
     .sort((a,b) => (bookingBySales[b]||0) - (bookingBySales[a]||0));
   const bookingVals = salesRoster.map(n => bookingBySales[n] || 0);
   const pipelineVals = salesRoster.map(n => pipelineByNorm[normName(n)] || 0);
+  lastSalesChartRows = salesRoster.map((n,i) => ({ SalesPerson: n, Booking: bookingVals[i], Pipeline: pipelineVals[i] }));
 
   document.getElementById('kpiBookings').textContent = fmtCurrencyShort(totalBooking);
   document.getElementById('kpiBookings').title = fmtCurrencyFull(totalBooking);
-  document.getElementById('kpiReceipts').textContent = fmtCurrencyShort(totalReceipt);
-  document.getElementById('kpiReceipts').title = fmtCurrencyFull(totalReceipt);
   document.getElementById('kpiPipeline').textContent = fmtCurrencyShort(totalPipeline);
   document.getElementById('kpiPipeline').title = fmtCurrencyFull(totalPipeline);
   document.getElementById('kpiPipelineCount').textContent = pipelineCount;
+  const localReceiptsEl = document.getElementById('kpiTotalReceiptsLocal');
+  if (localReceiptsEl) localReceiptsEl.textContent = fmtCurrencyShort(totalReceipt);
 
   const rowH = 34;
   document.getElementById('salesChartWrap').style.height = Math.max(240, salesRoster.length * rowH + 50) + 'px';
@@ -794,11 +894,10 @@ function renderBookingsPipelineAndReceipts(bookingRows, pipelineRows){
     options: chartOptions(true, 'money')
   });
 
-  // Fixed roster from the org's department sheet — every vertical shows,
-  // even at $0, and Gagan/Gagandeep Singh style duplicates are merged.
   const deliveryRoster = CANONICAL_DELIVERY_HEADS
     .slice()
     .sort((a,b) => (receiptByOwner[b]||0) - (receiptByOwner[a]||0));
+  lastReceiptsChartRows = deliveryRoster.map(n => ({ DeliveryHead: n, Department: departmentStringFor(n), ReceiptCollected: receiptByOwner[n] || 0 }));
 
   document.getElementById('receiptsChartWrap').style.height = Math.max(220, deliveryRoster.length * rowH + 50) + 'px';
   const ctx2 = document.getElementById('chartReceipts').getContext('2d');
@@ -811,6 +910,8 @@ function renderBookingsPipelineAndReceipts(bookingRows, pipelineRows){
     },
     options: chartOptions(true, 'money')
   });
+
+  renderReceiptEwmsSummary();
 }
 
 // ---------- Kick-off % chart ----------
@@ -825,10 +926,10 @@ function renderKickoffChart(bookingRows){
     const category = (row["Sales Category"] || "").toLowerCase().trim();
     const booking = parseNum(row["Booking"]);
     const receipt = parseNum(row["Receipt Amount"]);
-    if (category.includes('milestone')) return; // milestone payments excluded from this ratio
+    if (category.includes('milestone')) return;
     if (category === 'fresh' && booking) {
       freshBooking[sp] = (freshBooking[sp] || 0) + booking;
-      kickoffReceipt[sp] = (kickoffReceipt[sp] || 0) + receipt; // receipt on the same row = kick-off payment
+      kickoffReceipt[sp] = (kickoffReceipt[sp] || 0) + receipt;
     }
   });
 
@@ -836,6 +937,9 @@ function renderKickoffChart(bookingRows){
   const sortedIdx = salesRoster.map((n,i) => i).sort((a,b) => pct[b]-pct[a]);
   const sortedRoster = sortedIdx.map(i => salesRoster[i]);
   const sortedPct = sortedIdx.map(i => pct[i]);
+  lastKickoffRows = sortedRoster.map((n,i) => ({ SalesPerson: n, FreshBooking: freshBooking[n]||0, KickoffReceived: kickoffReceipt[n]||0, KickoffPct: sortedPct[i].toFixed(1) + '%' }));
+  lastFreshBookingBySales = freshBooking;
+  lastKickoffReceiptBySales = kickoffReceipt;
 
   const totalFresh = Object.values(freshBooking).reduce((a,b)=>a+b,0);
   const totalKickoff = Object.values(kickoffReceipt).reduce((a,b)=>a+b,0);
@@ -867,28 +971,34 @@ function renderSalesPerformanceTable(bookingRows){
     if (!sp || !data[sp]) return;
     const category = (row["Sales Category"] || "").toLowerCase().trim();
     const booking = parseNum(row["Booking"]);
-    if (category.includes('milestone')) return; // explicitly excluded
+    if (category.includes('milestone')) return;
     if (category === 'fresh') data[sp].fresh += booking;
     else if (category === 'crossell') data[sp].crossell += booking;
     else if (category === 'upsell') data[sp].upsell += booking;
   });
 
   const rows = salesRoster
-    .map(n => ({ name: n, ...data[n], total: data[n].fresh + data[n].crossell + data[n].upsell }))
-    .filter(r => r.total > 0 || true) // keep everyone per "show all active owners"
+    .map(n => {
+      const fresh = data[n].fresh;
+      const kickoffValue = lastKickoffReceiptBySales[n] || 0;
+      const kickoffPct = fresh > 0 ? Math.min(100, (kickoffValue / fresh) * 100) : 0;
+      return { name: n, ...data[n], total: data[n].fresh + data[n].crossell + data[n].upsell, kickoffValue, kickoffPct };
+    })
     .sort((a,b) => b.total - a.total);
+  lastSalesPerfRows = rows.map(r => ({ SalesPerson: r.name, Fresh: r.fresh, Crossell: r.crossell, Upsell: r.upsell, Total: r.total, KickoffValue: r.kickoffValue, KickoffPct: r.kickoffPct.toFixed(1) + '%' }));
 
   const totals = rows.reduce((acc, r) => ({
-    fresh: acc.fresh + r.fresh, crossell: acc.crossell + r.crossell, upsell: acc.upsell + r.upsell, total: acc.total + r.total
-  }), { fresh:0, crossell:0, upsell:0, total:0 });
+    fresh: acc.fresh + r.fresh, crossell: acc.crossell + r.crossell, upsell: acc.upsell + r.upsell, total: acc.total + r.total, kickoffValue: acc.kickoffValue + r.kickoffValue
+  }), { fresh:0, crossell:0, upsell:0, total:0, kickoffValue:0 });
+  const totalKickoffPct = totals.fresh > 0 ? (totals.kickoffValue/totals.fresh*100) : 0;
 
   let html = `<table class="data-table"><thead><tr>
-    <th>Sales Person</th><th>Fresh</th><th>Crossell</th><th>Upsell</th><th>Total Booking</th>
+    <th>Sales Person</th><th>Fresh</th><th>Crossell</th><th>Upsell</th><th>Total Booking</th><th>Kick-off Value</th><th>Kick-off %</th>
   </tr></thead><tbody>`;
   rows.forEach(r => {
-    html += `<tr><td>${r.name}</td><td>${fmtCurrencyFull(r.fresh)}</td><td>${fmtCurrencyFull(r.crossell)}</td><td>${fmtCurrencyFull(r.upsell)}</td><td>${fmtCurrencyFull(r.total)}</td></tr>`;
+    html += `<tr><td>${r.name}</td><td>${fmtCurrencyFull(r.fresh)}</td><td>${fmtCurrencyFull(r.crossell)}</td><td>${fmtCurrencyFull(r.upsell)}</td><td>${fmtCurrencyFull(r.total)}</td><td>${fmtCurrencyFull(r.kickoffValue)}</td><td>${r.kickoffPct.toFixed(0)}%</td></tr>`;
   });
-  html += `<tr class="total-row"><td>Total</td><td>${fmtCurrencyFull(totals.fresh)}</td><td>${fmtCurrencyFull(totals.crossell)}</td><td>${fmtCurrencyFull(totals.upsell)}</td><td>${fmtCurrencyFull(totals.total)}</td></tr>`;
+  html += `<tr class="total-row"><td>Total</td><td>${fmtCurrencyFull(totals.fresh)}</td><td>${fmtCurrencyFull(totals.crossell)}</td><td>${fmtCurrencyFull(totals.upsell)}</td><td>${fmtCurrencyFull(totals.total)}</td><td>${fmtCurrencyFull(totals.kickoffValue)}</td><td>${totalKickoffPct.toFixed(0)}%</td></tr>`;
   html += `</tbody></table>`;
   document.getElementById('salesPerfTableWrap').innerHTML = html;
 }
@@ -913,12 +1023,17 @@ function renderEwms(rows){
     byHead[head].received += parseNum(r["Received"]);
     byHead[head].pending += parseNum(r["PendingPayment"]);
   });
+  lastEwmsByHead = byHead;
+  lastTotalProjection = Object.values(byHead).reduce((s,h) => s + h.received + h.pending, 0);
+  const localProjEl = document.getElementById('kpiTotalProjectionLocal');
+  if (localProjEl) localProjEl.textContent = fmtCurrencyShort(lastTotalProjection);
 
-  // Fixed roster from the department sheet, same as the Receipts chart, so
-  // every vertical shows even at $0 and both charts stay aligned/comparable.
   const deliveryRoster = CANONICAL_DELIVERY_HEADS
     .slice()
     .sort((a,b) => ((byHead[b]?.received||0)+(byHead[b]?.pending||0)) - ((byHead[a]?.received||0)+(byHead[a]?.pending||0)));
+  const receivedVals = deliveryRoster.map(h => byHead[h]?.received || 0);
+  const pendingVals = deliveryRoster.map(h => byHead[h]?.pending || 0);
+  lastEwmsChartRows = deliveryRoster.map((n,i) => ({ DeliveryHead: n, Department: departmentStringFor(n), Received: receivedVals[i], Pending: pendingVals[i], TotalProjection: receivedVals[i]+pendingVals[i] }));
 
   document.getElementById('ewmsChartWrap').style.height = Math.max(220, deliveryRoster.length * 34 + 50) + 'px';
   const ctx = document.getElementById('chartEwms').getContext('2d');
@@ -929,12 +1044,69 @@ function renderEwms(rows){
     data: {
       labels: deliveryRoster.map(deliveryHeadTickLabel),
       datasets: [
-        { label: 'Received', data: deliveryRoster.map(h => byHead[h]?.received || 0), backgroundColor: (c) => barGradient(c, '#A8E6C3', '#1E824C'), borderRadius: 5, maxBarThickness: 18, stack: 's', datalabels: { display: true, anchor: 'center', align: 'center', color: '#fff', font: { family: 'JetBrains Mono', size: 9 }, formatter: (v) => fmtCurrencyShort(v) } },
-        { label: 'Pending', data: deliveryRoster.map(h => byHead[h]?.pending || 0), backgroundColor: (c) => barGradient(c, '#F5B7B1', '#C0392B'), borderRadius: 5, maxBarThickness: 18, stack: 's', datalabels: { display: true, anchor: 'center', align: 'center', color: '#fff', font: { family: 'JetBrains Mono', size: 9 }, formatter: (v) => fmtCurrencyShort(v) } }
+        {
+          label: 'Received', data: receivedVals, backgroundColor: (c) => barGradient(c, '#A8E6C3', '#1E824C'), borderRadius: 5, maxBarThickness: 18, stack: 's',
+          datalabels: {
+            display: true,
+            anchor: (ctx) => receivedVals[ctx.dataIndex] === 0 ? 'end' : 'center',
+            align: (ctx) => receivedVals[ctx.dataIndex] === 0 ? 'end' : 'center',
+            color: (ctx) => receivedVals[ctx.dataIndex] === 0 ? '#9CA3AF' : '#fff',
+            font: { family: 'JetBrains Mono', size: 9 },
+            formatter: (v) => fmtCurrencyShort(v)
+          }
+        },
+        {
+          label: 'Pending', data: pendingVals, backgroundColor: (c) => barGradient(c, '#F5B7B1', '#C0392B'), borderRadius: 5, maxBarThickness: 18, stack: 's',
+          datalabels: {
+            display: (ctx) => !(pendingVals[ctx.dataIndex] === 0 && receivedVals[ctx.dataIndex] === 0),
+            anchor: (ctx) => pendingVals[ctx.dataIndex] === 0 ? 'end' : 'center',
+            align: (ctx) => pendingVals[ctx.dataIndex] === 0 ? 'end' : 'center',
+            color: (ctx) => pendingVals[ctx.dataIndex] === 0 ? '#9CA3AF' : '#fff',
+            font: { family: 'JetBrains Mono', size: 9 },
+            formatter: (v) => fmtCurrencyShort(v)
+          }
+        }
       ]
     },
     options: { ...opts, scales: { ...opts.scales, x: { ...opts.scales.x, stacked: true }, y: { ...opts.scales.y, stacked: true } } }
   });
+
+  renderReceiptEwmsSummary();
+}
+
+// ---------- Combined Receipts + EWMS summary table ----------
+function renderReceiptEwmsSummary(){
+  const wrap = document.getElementById('summaryTableWrap');
+  if (!wrap) return;
+
+  const rows = CANONICAL_DELIVERY_HEADS.map(name => {
+    const receiptsCollected = lastReceiptByOwner[name] || 0;
+    const ewms = lastEwmsByHead[name] || { received: 0, pending: 0 };
+    return {
+      name,
+      dept: departmentStringFor(name),
+      receiptsCollected,
+      ewmsReceived: ewms.received,
+      ewmsPending: ewms.pending,
+      totalProjection: ewms.received + ewms.pending
+    };
+  }).sort((a,b) => b.totalProjection - a.totalProjection || b.receiptsCollected - a.receiptsCollected);
+
+  lastCombinedSummaryRows = rows.map(r => ({
+    DeliveryHead: r.name, Department: r.dept,
+    ReceiptsCollected: r.receiptsCollected, EWMS_Received: r.ewmsReceived, EWMS_Pending: r.ewmsPending, Total_Projection: r.totalProjection
+  }));
+
+  let html = `<table class="data-table"><thead><tr>
+    <th>Delivery Head</th><th>Receipts Collected</th><th>EWMS Received</th><th>EWMS Pending</th><th>Total Projection</th>
+  </tr></thead><tbody>`;
+  rows.forEach(r => {
+    html += `<tr><td>${r.name}<br><span style="font-size:11px; color:var(--muted); font-weight:400;">(${r.dept})</span></td>`
+      + `<td>${fmtCurrencyFull(r.receiptsCollected)}</td><td>${fmtCurrencyFull(r.ewmsReceived)}</td><td>${fmtCurrencyFull(r.ewmsPending)}</td><td><b>${fmtCurrencyFull(r.totalProjection)}</b></td></tr>`;
+  });
+  html += `<tr class="total-row"><td>Total</td><td>${fmtCurrencyFull(lastTotalReceipt)}</td><td>${fmtCurrencyFull(Object.values(lastEwmsByHead).reduce((s,h)=>s+h.received,0))}</td><td>${fmtCurrencyFull(Object.values(lastEwmsByHead).reduce((s,h)=>s+h.pending,0))}</td><td>${fmtCurrencyFull(lastTotalProjection)}</td></tr>`;
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
 }
 
 // ---------- Pipeline detail section ----------
@@ -955,6 +1127,7 @@ function renderPipelineSection(pipelineRows){
       ageDays, status
     };
   });
+  lastPipelineRows = withAge.map(r => ({ Owner: r.owner, Lead: r.name, Value: r.value, AgeDays: r.ageDays, Status: r.status }));
 
   const logged = withAge.filter(r => r.value > 0);
   const noValue = withAge.filter(r => r.value <= 0);
