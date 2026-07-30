@@ -134,6 +134,11 @@
   }
   .tab-set button:hover{ color:var(--text); }
   .tab-set button.active{ background:var(--text); color:#fff; }
+  .li-select{
+    background:var(--panel); border:1px solid var(--border); color:var(--text);
+    font-family:'Inter', sans-serif; font-size:13px; padding:7px 10px; border-radius:8px;
+    min-width:150px; cursor:pointer;
+  }
 
   main{ padding:32px 40px; max-width:1400px; margin:0 auto; }
 
@@ -458,6 +463,46 @@
         </div>
       </div>
 
+      <div class="section" style="padding-bottom:20px;">
+        <div class="section-head">
+          <div><span class="section-title">Filters</span></div>
+        </div>
+        <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-end;">
+          <div class="filter-group">
+            <div class="filter-label">User</div>
+            <select id="liUserFilter" class="li-select" onchange="setLiUser(this.value)"><option value="All">All Users</option></select>
+          </div>
+          <div class="filter-group">
+            <div class="filter-label">Month</div>
+            <select id="liMonthFilter" class="li-select" onchange="setLiMonth(this.value)"><option value="All">All Months</option></select>
+          </div>
+          <div class="filter-group">
+            <div class="filter-label">From Date</div>
+            <input type="date" id="liDateFrom" class="li-select" onchange="setLiDateFrom(this.value)">
+          </div>
+          <div class="filter-group">
+            <div class="filter-label">To Date</div>
+            <input type="date" id="liDateTo" class="li-select" onchange="setLiDateTo(this.value)">
+          </div>
+          <div class="filter-group">
+            <div class="filter-label">Lead Status</div>
+            <select id="liStatusFilter" class="li-select" onchange="setLiStatus(this.value)">
+              <option value="All">All</option>
+              <option value="reachout">Reachout</option>
+              <option value="connection established">Connection Established</option>
+              <option value="positive replies">Positive Replies</option>
+              <option value="meetings scheduled">Meetings Scheduled</option>
+              <option value="lead generated">Lead Generated</option>
+              <option value="proposal sent">Proposal Sent</option>
+              <option value="won">Won</option>
+              <option value="lost">Lost</option>
+            </select>
+          </div>
+          <button class="refresh-btn" onclick="resetLiFilters()">Reset Filters</button>
+        </div>
+        <div class="section-desc" style="margin-top:12px; margin-bottom:0;">Note: filtering to a single Lead Status shows only contacts currently at that exact stage (not cumulative) — the funnel below reflects whatever subset these filters select.</div>
+      </div>
+
       <div class="section">
         <div class="section-head">
           <div><span class="section-title">Reachouts vs Won — by BDM</span><span class="live-pill">Live</span></div>
@@ -546,6 +591,7 @@ const LINKEDIN_SOURCES = [
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vQcSG13vTvbTQJP2nj3ejUTxMwMcj-Iei6mLu7qmExkfDkH-uL7pCBq6xTT-T-ahcsB6rfLAVyU4gts/pub?gid=1301002743&single=true&output=csv"
 ];
 let rawLinkedinRows = [];
+let liUserFilter = 'All', liMonthFilter = 'All', liDateFrom = '', liDateTo = '', liStatusFilter = 'All';
 let lastLinkedinChartRows = [], lastLinkedinTableRows = [], lastLinkedinIndustryRows = [];
 
 let chartSales, chartReceipts, chartEwms, chartKickoff, chartLinkedin, chartLinkedinIndustry;
@@ -845,10 +891,80 @@ async function loadLinkedinOutbound(){
       return [];
     })));
     rawLinkedinRows = results.flat();
-    renderLinkedin(rawLinkedinRows);
+    buildLinkedinFilterControls(rawLinkedinRows);
+    applyLinkedinFilters();
   } catch (err) {
     console.error('LinkedIn outbound fetch failed:', err);
   }
+}
+
+// Reachout dates come as "30-June-2026" style strings — parse manually.
+function parseLiDate(str){
+  if (!str) return null;
+  const parts = str.trim().split('-');
+  if (parts.length !== 3) return null;
+  const months = { january:0, february:1, march:2, april:3, may:4, june:5, july:6, august:7, september:8, october:9, november:10, december:11 };
+  const day = parseInt(parts[0], 10);
+  const mon = months[parts[1].trim().toLowerCase()];
+  const year = parseInt(parts[2], 10);
+  if (isNaN(day) || mon === undefined || isNaN(year)) return null;
+  return new Date(year, mon, day);
+}
+
+function buildLinkedinFilterControls(rows){
+  const users = Array.from(new Set(rows.map(r => (r["Linkedin_Request_Id"]||"").trim()).filter(Boolean))).sort();
+  const userSelect = document.getElementById('liUserFilter');
+  userSelect.innerHTML = '<option value="All">All Users</option>' + users.map(u => `<option value="${u}">${u}</option>`).join('');
+
+  const monthSet = new Set();
+  rows.forEach(r => {
+    const d = parseLiDate(r["Linkedin_Reachout_Date"]);
+    if (d) monthSet.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  });
+  const months = Array.from(monthSet).sort();
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthSelect = document.getElementById('liMonthFilter');
+  monthSelect.innerHTML = '<option value="All">All Months</option>' + months.map(m => {
+    const [y, mo] = m.split('-');
+    return `<option value="${m}">${monthNames[parseInt(mo,10)-1]} ${y}</option>`;
+  }).join('');
+}
+
+function setLiUser(v){ liUserFilter = v; applyLinkedinFilters(); }
+function setLiMonth(v){ liMonthFilter = v; applyLinkedinFilters(); }
+function setLiDateFrom(v){ liDateFrom = v; applyLinkedinFilters(); }
+function setLiDateTo(v){ liDateTo = v; applyLinkedinFilters(); }
+function setLiStatus(v){ liStatusFilter = v; applyLinkedinFilters(); }
+function resetLiFilters(){
+  liUserFilter = 'All'; liMonthFilter = 'All'; liDateFrom = ''; liDateTo = ''; liStatusFilter = 'All';
+  document.getElementById('liUserFilter').value = 'All';
+  document.getElementById('liMonthFilter').value = 'All';
+  document.getElementById('liDateFrom').value = '';
+  document.getElementById('liDateTo').value = '';
+  document.getElementById('liStatusFilter').value = 'All';
+  applyLinkedinFilters();
+}
+
+function applyLinkedinFilters(){
+  const filtered = rawLinkedinRows.filter(row => {
+    const bdm = (row["Linkedin_Request_Id"]||"").trim();
+    if (liUserFilter !== 'All' && bdm !== liUserFilter) return false;
+
+    const rawStatus = (row["Linkedin_Request_Status"]||"").trim().toLowerCase();
+    const stage = LI_STATUS_ALIASES[rawStatus] || '';
+    if (liStatusFilter !== 'All' && stage !== liStatusFilter) return false;
+
+    const date = parseLiDate(row["Linkedin_Reachout_Date"]);
+    if (liMonthFilter !== 'All') {
+      if (!date) return false;
+      const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
+      if (key !== liMonthFilter) return false;
+    }
+    if (liDateFrom) { if (!date || date < new Date(liDateFrom+'T00:00:00')) return false; }
+    if (liDateTo) { if (!date || date > new Date(liDateTo+'T23:59:59')) return false; }
+    return true;
+  });
+  renderLinkedin(filtered);
 }
 
 // Final funnel taxonomy agreed with the Outbound team. Order matters — it
