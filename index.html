@@ -712,7 +712,11 @@ function switchDashboard(which){
 
 // ---------- Fetching ----------
 async function fetchCsv(url){
-  const response = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
+  // Google's own serving layer can cache a published CSV URL for a few
+  // minutes regardless of our fetch cache setting — appending a unique
+  // param each time forces every request to be treated as "new".
+  const bustedUrl = url + (url.includes('?') ? '&' : '?') + '_cb=' + Date.now();
+  const response = await fetch(bustedUrl, { method: 'GET', mode: 'cors', cache: 'no-store' });
   if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
   const text = await response.text();
   const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
@@ -912,7 +916,7 @@ function parseLiDate(str){
 }
 
 function buildLinkedinFilterControls(rows){
-  const users = Array.from(new Set(rows.map(r => (r["Linkedin_Request_Id"]||"").trim()).filter(Boolean))).sort();
+  const users = Array.from(new Set(rows.map(r => getLiBdmName(r)).filter(Boolean))).sort();
   const userSelect = document.getElementById('liUserFilter');
   userSelect.innerHTML = '<option value="All">All Users</option>' + users.map(u => `<option value="${u}">${u}</option>`).join('');
 
@@ -947,7 +951,7 @@ function resetLiFilters(){
 
 function applyLinkedinFilters(){
   const filtered = rawLinkedinRows.filter(row => {
-    const bdm = (row["Linkedin_Request_Id"]||"").trim();
+    const bdm = getLiBdmName(row);
     if (liUserFilter !== 'All' && bdm !== liUserFilter) return false;
 
     const rawStatus = (row["Linkedin_Request_Status"]||"").trim().toLowerCase();
@@ -995,33 +999,55 @@ const LI_STATUS_ALIASES = {
   'won (new)': 'won'
 };
 
+// BDM identity now comes from the new "Outreach Person" column; fall back
+// to the old "Linkedin_Request_Id" field for any sheet not yet updated.
+function getLiBdmName(row){
+  return (row["Outreach Person"] || row["Linkedin_Request_Id"] || "").trim();
+}
+
 function renderLinkedin(rows){
   const byBdm = {};
   const byIndustry = {};
 
+  // Dedupe by (Outreach Person + Client Name) first — Total Reachout should
+  // count each unique client once, not once per row, since the same client
+  // can appear on multiple rows as their status is updated over time. When
+  // duplicates exist, keep whichever row shows the furthest funnel progress.
+  const byClientKey = {};
   rows.forEach(row => {
-    const bdm = (row["Linkedin_Request_Id"] || "").trim();
+    const bdm = getLiBdmName(row);
+    const client = (row["Client Name"] || "").trim();
+    if (!bdm) return;
     const rawStatus = (row["Linkedin_Request_Status"] || "").trim().toLowerCase();
     const stage = LI_STATUS_ALIASES[rawStatus] || '';
-    const industry = (row["Industry"] || "").trim();
-    if (!bdm) return;
+    const stageIdx = stage === 'lost' ? -2 : LI_FUNNEL_ORDER.indexOf(stage); // -2 = lost, -1 = unrecognized/blank
 
+    // Rows without a Client Name can't be deduped meaningfully — count each on its own.
+    const key = bdm + '|' + (client ? client.toLowerCase() : '__row_' + Math.random());
+    if (!byClientKey[key] || stageIdx > byClientKey[key].stageIdx) {
+      byClientKey[key] = { bdm, stage, stageIdx, industry: (row["Industry"] || "").trim() };
+    }
+  });
+  const clientRecords = Object.values(byClientKey);
+
+  clientRecords.forEach(rec => {
+    const bdm = rec.bdm;
     if (!byBdm[bdm]) byBdm[bdm] = { reachout: 0, funnel: LI_FUNNEL_ORDER.map(() => 0), lost: 0 };
-    byBdm[bdm].reachout++; // every row = one reachout attempt, regardless of current stage
+    byBdm[bdm].reachout++; // one unique client = one reachout
 
-    if (stage === 'lost') {
+    if (rec.stage === 'lost') {
       byBdm[bdm].lost++;
     } else {
-      const idx = LI_FUNNEL_ORDER.indexOf(stage);
-      if (idx > 0) { // idx 0 (reachout) is already counted above for every row
+      const idx = LI_FUNNEL_ORDER.indexOf(rec.stage);
+      if (idx > 0) { // idx 0 (reachout) is already counted above for every unique client
         for (let i = 1; i <= idx; i++) byBdm[bdm].funnel[i]++;
       }
     }
 
-    if (industry) byIndustry[industry] = (byIndustry[industry] || 0) + 1;
+    if (rec.industry) byIndustry[rec.industry] = (byIndustry[rec.industry] || 0) + 1;
   });
 
-  const totalReachouts = rows.length;
+  const totalReachouts = clientRecords.length;
   const bdms = Object.keys(byBdm).sort((a,b) => byBdm[b].reachout - byBdm[a].reachout);
   const sumStage = (i) => bdms.reduce((s,n) => s + byBdm[n].funnel[i], 0);
   const totalMeetings = sumStage(LI_FUNNEL_ORDER.indexOf('meetings scheduled'));
