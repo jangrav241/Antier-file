@@ -520,7 +520,7 @@
         <div class="section-head">
           <div><span class="section-title">BDM Funnel Breakdown</span><span class="live-pill">Live</span></div>
         </div>
-        <div class="section-desc">Full funnel per BDM: Reachouts → Added → Replied → Qualified, with conversion rates.</div>
+        <div class="section-desc">Reachout counts unique clients per BDM (deduped, not raw rows). Every other column counts contacts at their exact current stage only — not cumulative — since a lead can skip stages (e.g. going straight from Positive Replies to Lead Generated with no Meeting Scheduled ever logged).</div>
         <div id="liTableWrap" class="chart-scroll"></div>
         <div class="section-export"><button class="export-mini" onclick="downloadCsv('linkedin_bdm_breakdown.csv', lastLinkedinTableRows)">⬇ Export CSV</button></div>
       </div>
@@ -1038,10 +1038,11 @@ function renderLinkedin(rows){
     if (rec.stage === 'lost') {
       byBdm[bdm].lost++;
     } else {
+      // Count only toward the exact current stage — stages can be skipped
+      // in practice (e.g. straight from Positive Replies to Lead Generated
+      // with no Meeting Scheduled ever logged), so no forward-filling.
       const idx = LI_FUNNEL_ORDER.indexOf(rec.stage);
-      if (idx > 0) { // idx 0 (reachout) is already counted above for every unique client
-        for (let i = 1; i <= idx; i++) byBdm[bdm].funnel[i]++;
-      }
+      if (idx > 0) byBdm[bdm].funnel[idx]++; // idx 0 (reachout) already counted above
     }
 
     if (rec.industry) byIndustry[rec.industry] = (byIndustry[rec.industry] || 0) + 1;
