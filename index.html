@@ -321,7 +321,7 @@
         <div class="kpi" style="--accent:var(--teal)">
           <div class="kpi-label">Achieved So Far</div>
           <div class="kpi-value" id="kpiGoalAchieved">—</div>
-          <div class="kpi-sub"><span id="kpiGoalAttainment">—</span> of goal</div>
+          <div class="kpi-sub" id="kpiGoalAttainmentWrap"><span id="kpiGoalAttainment">—</span></div>
         </div>
         <div class="kpi" style="--accent:var(--orange)">
           <div class="kpi-label">Pipeline (Sales)</div>
@@ -1224,10 +1224,10 @@ function renderGoals(){
     }
   });
 
-  function resolveVpForSalesRep(repName){
+  function resolveSalesRepIdentity(repName){
     const key = normNameKey(repName);
-    const fullName = hrByFullName[key] ? repName : (salesFirstNameIndex[key.split(/\s+/)[0]] || repName);
-    return walkUpToVp(hrByFullName, fullName);
+    const canonicalName = hrByFullName[key] ? repName : (salesFirstNameIndex[key.split(/\s+/)[0]] || repName);
+    return { canonicalName, vp: walkUpToVp(hrByFullName, canonicalName) };
   }
   function resolveVpForDeliveryHead(canonicalName){
     const fullName = CANONICAL_HEAD_FULLNAME[canonicalName] || canonicalName;
@@ -1236,7 +1236,7 @@ function renderGoals(){
 
   // ---- Roll up Achieved + Pipeline per VP, only for FY 2026-2027 ----
   const goalFyRows = rawBookingRows.filter(r => (r["FY"] || "").trim() === '2026-2027');
-  const vpData = {}; // vpName -> { achieved, pipeline, members: { name: {achieved, pipeline, kind} } }
+  const vpData = {}; // vpName -> { achieved, pipeline, members: { canonicalName: {achieved, pipeline, kind} } }
   function ensureVp(vp){ if (!vpData[vp]) vpData[vp] = { achieved: 0, pipeline: 0, members: {} }; }
   function addMember(vp, name, achievedDelta, pipelineDelta, kind){
     ensureVp(vp);
@@ -1247,27 +1247,39 @@ function renderGoals(){
     vpData[vp].pipeline += pipelineDelta;
   }
 
+  // True company-wide totals for FY 2026-2027 — independent of whether a
+  // person's chain resolves to an identified VP, so the top KPI always
+  // matches the Sales tab's own numbers rather than silently undercounting.
+  let totalCompanyBooking = 0, totalCompanyReceipt = 0, unmappedBooking = 0, unmappedReceipt = 0;
+
   goalFyRows.forEach(row => {
     const sp = (row["Sales Person"] || "").trim();
     if (sp) {
       const booking = parseNum(row["Booking"]);
-      const vp = resolveVpForSalesRep(sp);
-      if (vp && booking) addMember(vp, sp, booking, 0, 'sales');
+      totalCompanyBooking += booking;
+      const { canonicalName, vp } = resolveSalesRepIdentity(sp);
+      if (vp && booking) addMember(vp, canonicalName, booking, 0, 'sales');
+      else if (booking) unmappedBooking += booking;
     }
     const owner = canonicalDeliveryHead(row["Project Owner"]);
     if (owner) {
       const receipt = parseNum(row["Receipt Amount"]);
+      totalCompanyReceipt += receipt;
       const vp = resolveVpForDeliveryHead(owner);
       if (vp && receipt) addMember(vp, owner, receipt, 0, 'delivery');
+      else if (receipt) unmappedReceipt += receipt;
     }
   });
   rawPipelineRows.forEach(row => {
     const lo = (row["LeadOwner"] || "").trim();
     if (!lo) return;
     const val = parseNum(row["OrderValue"]);
-    const vp = resolveVpForSalesRep(lo);
-    if (vp && val) addMember(vp, lo, 0, val, 'sales');
+    const { canonicalName, vp } = resolveSalesRepIdentity(lo);
+    if (vp && val) addMember(vp, canonicalName, 0, val, 'sales');
   });
+
+  const totalAchievedCompanyWide = totalCompanyBooking + totalCompanyReceipt;
+  const totalUnmapped = unmappedBooking + unmappedReceipt;
 
   // ---- Targets: from VP_Targets sheet, defaulting to 0 if not configured ----
   const targetByVp = {};
@@ -1290,11 +1302,12 @@ function renderGoals(){
 
   // ---- Top KPIs ----
   const totalGoalUsd = TOP_LINE_GOAL_INR / exchangeRate;
-  const totalAchieved = achievedVals.reduce((a,b)=>a+b,0);
+  const totalAchieved = totalAchievedCompanyWide;
   const totalPipeline = pipelineVals.reduce((a,b)=>a+b,0);
   const totalAllocatedCr = Object.values(targetByVp).reduce((a,b)=>a+b,0);
   document.getElementById('kpiGoalAchieved').textContent = fmtCurrencyShort(totalAchieved);
-  document.getElementById('kpiGoalAttainment').textContent = totalGoalUsd > 0 ? (totalAchieved/totalGoalUsd*100).toFixed(1) + '%' : '0%';
+  document.getElementById('kpiGoalAttainment').textContent = (totalGoalUsd > 0 ? (totalAchieved/totalGoalUsd*100).toFixed(1) + '%' : '0%')
+    + (totalUnmapped > 0 ? ` of goal · ${fmtCurrencyShort(totalUnmapped)} not yet mapped to a VP` : ' of goal');
   document.getElementById('kpiGoalPipeline').textContent = fmtCurrencyShort(totalPipeline);
   document.getElementById('kpiGoalAllocated').textContent = '₹' + totalAllocatedCr.toFixed(0) + ' Cr';
   document.getElementById('kpiGoalAllocatedNote').textContent = `of ₹140 Cr goal (${(totalAllocatedCr/140*100).toFixed(0)}% allocated)`;
