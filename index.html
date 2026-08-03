@@ -548,16 +548,59 @@
       </div>
     </div>
 
-    <!-- ============ HR — placeholder ============ -->
+    <!-- ============ HR ============ -->
     <div id="hrDashboardView" style="display:none;">
-      <div class="section">
-        <div class="section-head">
-          <div><span class="section-title">HR</span></div>
+
+      <div class="kpi-row" style="margin-bottom:24px;">
+        <div class="kpi" style="--accent:var(--blue)">
+          <div class="kpi-label">Total Employees</div>
+          <div class="kpi-value" id="kpiHrTotal">—</div>
+          <div class="kpi-sub">All records in EWMS, any status</div>
         </div>
-        <div class="placeholder-card">
-          Not connected yet. Tell me what to pull in here — e.g. headcount by department, attrition, hiring pipeline — and which system has it (HRMS, spreadsheet, etc.), and I'll wire it up the same way as Sales and Receipts.
+        <div class="kpi" style="--accent:var(--teal)">
+          <div class="kpi-label">Working</div>
+          <div class="kpi-value" id="kpiHrWorking">—</div>
+          <div class="kpi-sub"><span id="kpiHrWorkingPct">—</span> of total</div>
+        </div>
+        <div class="kpi" style="--accent:var(--amber)">
+          <div class="kpi-label">Benched</div>
+          <div class="kpi-value" id="kpiHrBenched">—</div>
+          <div class="kpi-sub">Currently on bench</div>
+        </div>
+        <div class="kpi" style="--accent:var(--red)">
+          <div class="kpi-label">Resigned / Inactive</div>
+          <div class="kpi-value" id="kpiHrLeft">—</div>
+          <div class="kpi-sub">Includes Resigned + Inactive status</div>
         </div>
       </div>
+
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Headcount by Department</span><span class="live-pill">Live</span></div>
+        </div>
+        <div class="section-desc">All 783 employee records, grouped by department, sorted by headcount.</div>
+        <div class="chart-scroll"><div class="chart-wrap" id="hrDeptChartWrap"><canvas id="chartHrDept"></canvas></div></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('headcount_by_department.csv', lastHrDeptRows)">⬇ Export CSV</button></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Currently Benched</span><span class="live-pill">Live</span></div>
+        </div>
+        <div class="section-desc">Employees with status = Benched, sorted by most recent bench date.</div>
+        <div id="hrBenchedTableWrap" class="chart-scroll"></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('currently_benched.csv', lastHrBenchedRows)">⬇ Export CSV</button></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Recent Resignations</span><span class="live-pill">Live</span></div>
+        </div>
+        <div class="section-desc">Employees with a Resign Start Date in the last 90 days, most recent first.</div>
+        <div id="hrResignedTableWrap" class="chart-scroll"></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('recent_resignations.csv', lastHrResignedRows)">⬇ Export CSV</button></div>
+      </div>
+
     </div>
 
     <!-- ============ PERFORMANCE — placeholder ============ -->
@@ -592,9 +635,14 @@ const LINKEDIN_SOURCES = [
 ];
 let rawLinkedinRows = [];
 let liUserFilter = 'All', liMonthFilter = 'All', liDateFrom = '', liDateTo = '', liStatusFilter = 'All';
+
+// HR — employee data, synced via hr_sync.js from EWMS's employee-details API
+const HR_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=52764210&single=true&output=csv";
+let rawHrRows = [];
+let lastHrDeptRows = [], lastHrBenchedRows = [], lastHrResignedRows = [];
 let lastLinkedinChartRows = [], lastLinkedinTableRows = [], lastLinkedinIndustryRows = [];
 
-let chartSales, chartReceipts, chartEwms, chartKickoff, chartLinkedin, chartLinkedinIndustry;
+let chartSales, chartReceipts, chartEwms, chartKickoff, chartLinkedin, chartLinkedinIndustry, chartHrDept;
 let rawBookingRows = [], rawPipelineRows = [], rawEwmsRows = [];
 
 // Defaults: current quarter/FY (today falls in Q2 FY2026-2027) and Active sales reps only.
@@ -803,6 +851,7 @@ async function loadAll(){
 
   await loadEwms();
   loadLinkedinOutbound();
+  loadHrData();
 }
 
 function buildFilterTabs(bookingRows){
@@ -969,6 +1018,86 @@ function applyLinkedinFilters(){
     return true;
   });
   renderLinkedin(filtered);
+}
+
+// ---------- HR ----------
+async function loadHrData(){
+  try {
+    const rows = await fetchCsv(HR_CSV);
+    rawHrRows = rows;
+    renderHr(rows);
+  } catch (err) {
+    console.error('HR data fetch failed:', err);
+  }
+}
+
+function renderHr(rows){
+  const total = rows.length;
+  const byStatus = {};
+  const byDept = {};
+  rows.forEach(r => {
+    const status = (r["EmployeeStatus"] || "Unknown").trim();
+    byStatus[status] = (byStatus[status] || 0) + 1;
+    const dept = (r["Department"] || "Unassigned").trim() || "Unassigned";
+    byDept[dept] = (byDept[dept] || 0) + 1;
+  });
+
+  const working = byStatus["Working"] || 0;
+  const benched = byStatus["Benched"] || 0;
+  const resignedOrInactive = (byStatus["Resigned"] || 0) + (byStatus["Inactive"] || 0);
+
+  document.getElementById('kpiHrTotal').textContent = total.toLocaleString();
+  document.getElementById('kpiHrWorking').textContent = working.toLocaleString();
+  document.getElementById('kpiHrWorkingPct').textContent = total > 0 ? (working/total*100).toFixed(0) + '%' : '0%';
+  document.getElementById('kpiHrBenched').textContent = benched.toLocaleString();
+  document.getElementById('kpiHrLeft').textContent = resignedOrInactive.toLocaleString();
+
+  // ---- Chart: headcount by department ----
+  const depts = Object.keys(byDept).sort((a,b) => byDept[b] - byDept[a]);
+  const deptVals = depts.map(d => byDept[d]);
+  lastHrDeptRows = depts.map((d,i) => ({ Department: d, Headcount: deptVals[i] }));
+
+  document.getElementById('hrDeptChartWrap').style.height = Math.max(220, depts.length * 26 + 50) + 'px';
+  const ctx = document.getElementById('chartHrDept').getContext('2d');
+  if (chartHrDept) chartHrDept.destroy();
+  chartHrDept = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: depts,
+      datasets: [{ label: 'Headcount', data: deptVals, backgroundColor: (c) => barGradient(c, '#8FB8E8', '#3355DD'), borderRadius: 5, maxBarThickness: 16, datalabels: datalabelConfig(false, '#3355DD', true) }]
+    },
+    options: chartOptions(true, 'count')
+  });
+
+  // ---- Table: currently benched ----
+  const benchedRows = rows.filter(r => (r["EmployeeStatus"]||"").trim() === "Benched")
+    .sort((a,b) => new Date(b["BenchDate"]||0) - new Date(a["BenchDate"]||0));
+  lastHrBenchedRows = benchedRows.map(r => ({ Name: r["Name"], Department: r["Department"], BenchDate: r["BenchDate"], BenchEndDate: r["BenchEndDate"], TeamLead: r["TeamLead"] }));
+
+  let benchedHtml = `<table class="data-table"><thead><tr><th>Name</th><th>Department</th><th>Bench Date</th><th>Bench End</th><th>Team Lead</th></tr></thead><tbody>`;
+  benchedRows.forEach(r => {
+    benchedHtml += `<tr><td>${r["Name"]||''}</td><td>${r["Department"]||''}</td><td>${r["BenchDate"]||'—'}</td><td>${r["BenchEndDate"]||'—'}</td><td>${r["TeamLead"]||''}</td></tr>`;
+  });
+  if (benchedRows.length === 0) benchedHtml += `<tr><td colspan="5" style="text-align:center; color:var(--muted);">No one currently benched</td></tr>`;
+  benchedHtml += `</tbody></table>`;
+  document.getElementById('hrBenchedTableWrap').innerHTML = benchedHtml;
+
+  // ---- Table: recent resignations (last 90 days) ----
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - 90*86400000);
+  const resignedRows = rows.filter(r => {
+    const d = r["ResignStartDate"] ? new Date(r["ResignStartDate"]) : null;
+    return d && d >= cutoff;
+  }).sort((a,b) => new Date(b["ResignStartDate"]) - new Date(a["ResignStartDate"]));
+  lastHrResignedRows = resignedRows.map(r => ({ Name: r["Name"], Department: r["Department"], ResignStartDate: r["ResignStartDate"], ResignEndDate: r["ResignEndDate"], TeamLead: r["TeamLead"] }));
+
+  let resignedHtml = `<table class="data-table"><thead><tr><th>Name</th><th>Department</th><th>Resign Start</th><th>Last Day</th><th>Team Lead</th></tr></thead><tbody>`;
+  resignedRows.forEach(r => {
+    resignedHtml += `<tr><td>${r["Name"]||''}</td><td>${r["Department"]||''}</td><td>${r["ResignStartDate"]||'—'}</td><td>${r["ResignEndDate"]||'—'}</td><td>${r["TeamLead"]||''}</td></tr>`;
+  });
+  if (resignedRows.length === 0) resignedHtml += `<tr><td colspan="5" style="text-align:center; color:var(--muted);">No resignations in the last 90 days</td></tr>`;
+  resignedHtml += `</tbody></table>`;
+  document.getElementById('hrResignedTableWrap').innerHTML = resignedHtml;
 }
 
 // Final funnel taxonomy agreed with the Outbound team. Order matters — it
