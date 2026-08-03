@@ -299,7 +299,8 @@
   <main>
 
     <div class="dashboard-tabs">
-      <button class="dash-tab active" data-dash="sales" onclick="switchDashboard('sales')">Sales</button>
+      <button class="dash-tab active" data-dash="goal" onclick="switchDashboard('goal')">FY26-27 Goal</button>
+      <button class="dash-tab" data-dash="sales" onclick="switchDashboard('sales')">Sales</button>
       <button class="dash-tab" data-dash="receipt" onclick="switchDashboard('receipt')">Receipt</button>
       <button class="dash-tab" data-dash="linkedin" onclick="switchDashboard('linkedin')">Outbound LinkedIn</button>
       <button class="dash-tab" data-dash="bank" onclick="switchDashboard('bank')">Bank (Treasury)</button>
@@ -308,7 +309,62 @@
     </div>
 
     <!-- ============ SALES DASHBOARD ============ -->
-    <div id="salesDashboardView">
+    <!-- ============ FY26-27 GOAL ============ -->
+    <div id="goalDashboardView">
+
+      <div class="kpi-row" style="margin-bottom:24px;">
+        <div class="kpi" style="--accent:var(--blue)">
+          <div class="kpi-label">FY26-27 Top-Line Goal</div>
+          <div class="kpi-value">₹140 Cr</div>
+          <div class="kpi-sub">Company-wide target set by leadership</div>
+        </div>
+        <div class="kpi" style="--accent:var(--teal)">
+          <div class="kpi-label">Achieved So Far</div>
+          <div class="kpi-value" id="kpiGoalAchieved">—</div>
+          <div class="kpi-sub"><span id="kpiGoalAttainment">—</span> of goal</div>
+        </div>
+        <div class="kpi" style="--accent:var(--orange)">
+          <div class="kpi-label">Pipeline (Sales)</div>
+          <div class="kpi-value" id="kpiGoalPipeline">—</div>
+          <div class="kpi-sub">Open opportunities, sales team only</div>
+        </div>
+        <div class="kpi" style="--accent:var(--amber)">
+          <div class="kpi-label">Target Allocated to VPs</div>
+          <div class="kpi-value" id="kpiGoalAllocated">—</div>
+          <div class="kpi-sub" id="kpiGoalAllocatedNote">—</div>
+        </div>
+      </div>
+
+      <div id="goalTargetsMissingCard" class="placeholder-card" style="display:none; margin-bottom:24px;">
+        VP targets aren't set up yet. Create a tab called <b>VP_Targets</b> in your Google Sheet with two columns — <b>VPName</b> and <b>TargetCr</b> — one row per VP (names are listed below once detected), publish it to web as CSV, and send me the link. Until then, targets show as ₹0 and only Achieved/Pipeline are real.
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">VP Leader — Target vs Achieved vs Pipeline</span><span class="live-pill">Live</span></div>
+          <div class="section-note">
+            <span class="legend-dot" style="background:#9CA3AF"></span>Target
+            <span class="legend-dot" style="background:#1E824C; margin-left:14px;"></span>Achieved
+            <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Pipeline
+          </div>
+        </div>
+        <div class="section-desc">Click any VP's bar to see their team-wise breakdown below. "Achieved" is Booking value for sales VPs and Receipts collected for delivery VPs.</div>
+        <div class="chart-scroll"><div class="chart-wrap" id="goalVpChartWrap"><canvas id="chartGoalVp"></canvas></div></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('vp_goal_rollup.csv', lastGoalVpRows)">⬇ Export CSV</button></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title" id="goalDrilldownTitle">Team Breakdown — select a VP above</span><span class="live-pill">Live</span></div>
+        </div>
+        <div class="section-desc">Individual contribution of each person reporting up to the selected VP.</div>
+        <div id="goalDrilldownTableWrap" class="chart-scroll"></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('vp_team_breakdown.csv', lastGoalDrilldownRows)">⬇ Export CSV</button></div>
+      </div>
+
+    </div>
+
+    <div id="salesDashboardView" style="display:none;">
 
       <div class="kpi-row" id="kpiRow">
         <div class="kpi" style="--accent:var(--orange)">
@@ -639,10 +695,17 @@ let liUserFilter = 'All', liMonthFilter = 'All', liDateFrom = '', liDateTo = '',
 // HR — employee data, synced via hr_sync.js from EWMS's employee-details API
 const HR_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=52764210&single=true&output=csv";
 let rawHrRows = [];
+
+// FY26-27 Top-Line Goal — ₹140 Cr, VP-wise bifurcation
+const TOP_LINE_GOAL_INR = 1400000000; // ₹140 Cr
+const VP_TARGETS_CSV = ""; // set once the VP_Targets sheet tab is published — see goalTargetsMissingCard
+let rawVpTargetRows = [];
+let selectedGoalVp = null;
+let lastGoalVpRows = [], lastGoalDrilldownRows = [];
 let lastHrDeptRows = [], lastHrBenchedRows = [], lastHrResignedRows = [];
 let lastLinkedinChartRows = [], lastLinkedinTableRows = [], lastLinkedinIndustryRows = [];
 
-let chartSales, chartReceipts, chartEwms, chartKickoff, chartLinkedin, chartLinkedinIndustry, chartHrDept;
+let chartSales, chartReceipts, chartEwms, chartKickoff, chartLinkedin, chartLinkedinIndustry, chartHrDept, chartGoalVp;
 let rawBookingRows = [], rawPipelineRows = [], rawEwmsRows = [];
 
 // Defaults: current quarter/FY (today falls in Q2 FY2026-2027) and Active sales reps only.
@@ -751,7 +814,7 @@ function getSalesRoster(){
 
 // ---------- Dashboard tab switching ----------
 function switchDashboard(which){
-  const views = { sales: 'salesDashboardView', receipt: 'receiptDashboardView', linkedin: 'linkedinDashboardView', bank: 'bankDashboardView', hr: 'hrDashboardView', performance: 'performanceDashboardView' };
+  const views = { goal: 'goalDashboardView', sales: 'salesDashboardView', receipt: 'receiptDashboardView', linkedin: 'linkedinDashboardView', bank: 'bankDashboardView', hr: 'hrDashboardView', performance: 'performanceDashboardView' };
   Object.entries(views).forEach(([key, id]) => {
     document.getElementById(id).style.display = (key === which) ? 'block' : 'none';
   });
@@ -841,6 +904,7 @@ async function loadAll(){
     buildFilterTabs(bookingRows);
     applyBookingFilter();
     renderPipelineSection(pipelineRows);
+    tryRenderGoals();
     const now = new Date();
     document.getElementById('lastRefreshed').textContent =
       "Last refreshed " + now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) + " · " + now.toLocaleDateString();
@@ -852,6 +916,7 @@ async function loadAll(){
   await loadEwms();
   loadLinkedinOutbound();
   loadHrData();
+  loadVpTargets();
 }
 
 function buildFilterTabs(bookingRows){
@@ -1026,6 +1091,7 @@ async function loadHrData(){
     const rows = await fetchCsv(HR_CSV);
     rawHrRows = rows;
     renderHr(rows);
+    tryRenderGoals();
   } catch (err) {
     console.error('HR data fetch failed:', err);
   }
@@ -1098,6 +1164,187 @@ function renderHr(rows){
   if (resignedRows.length === 0) resignedHtml += `<tr><td colspan="5" style="text-align:center; color:var(--muted);">No resignations in the last 90 days</td></tr>`;
   resignedHtml += `</tbody></table>`;
   document.getElementById('hrResignedTableWrap').innerHTML = resignedHtml;
+}
+
+// ---------- FY26-27 Goal — VP-wise bifurcation ----------
+async function loadVpTargets(){
+  if (!VP_TARGETS_CSV) { tryRenderGoals(); return; }
+  try {
+    rawVpTargetRows = await fetchCsv(VP_TARGETS_CSV);
+  } catch (err) {
+    console.error('VP targets fetch failed:', err);
+  }
+  tryRenderGoals();
+}
+
+function tryRenderGoals(){
+  if (rawHrRows.length && rawBookingRows.length) renderGoals();
+}
+
+function isVpDesignation(designation){
+  return /vice president|\bvp\b/i.test(designation || '');
+}
+
+function normNameKey(s){ return (s||'').trim().toLowerCase(); }
+
+// Canonical short delivery-head name -> their exact HR full name, needed
+// because our canonical names (Gagan, Swati, Hardeep, Nishant...) don't
+// always match the literal HR record name.
+const CANONICAL_HEAD_FULLNAME = {
+  'Karan Bhai': 'Karan Bhai', 'Gagan': 'Gagandeep Singh', 'Karan Chopra': 'Karan Chopra',
+  'Swati': 'Swati Rana', 'Danesh': 'Danesh Dinshaw Chothia', 'Deepak': 'Deepak Singh Sharma',
+  'Nikhil': 'Nikhil Uppal', 'Hardeep': 'Hardeep Singh', 'Devender': 'Devender Junas',
+  'Nishant': 'Nishant Mitra', 'Vivek': 'Vivek Aggarwal'
+};
+
+function walkUpToVp(hrByKey, fullName, maxHops){
+  let rec = hrByKey[normNameKey(fullName)];
+  let hops = 0;
+  while (rec && hops < (maxHops || 8)) {
+    if (isVpDesignation(rec.Designation)) return rec.Name;
+    const nextName = (rec.TeamLead || '').trim();
+    if (!nextName) return null;
+    rec = hrByKey[normNameKey(nextName)];
+    hops++;
+  }
+  return (rec && isVpDesignation(rec.Designation)) ? rec.Name : null;
+}
+
+function renderGoals(){
+  // ---- Build HR lookup indexes ----
+  const hrByFullName = {};
+  const salesFirstNameIndex = {};
+  rawHrRows.forEach(r => {
+    const name = (r.Name || '').trim();
+    if (!name) return;
+    hrByFullName[normNameKey(name)] = r;
+    if ((r.Department || '').trim() === 'Sales') {
+      const first = name.split(/\s+/)[0].toLowerCase();
+      if (!salesFirstNameIndex[first]) salesFirstNameIndex[first] = name;
+    }
+  });
+
+  function resolveVpForSalesRep(repName){
+    const key = normNameKey(repName);
+    const fullName = hrByFullName[key] ? repName : (salesFirstNameIndex[key.split(/\s+/)[0]] || repName);
+    return walkUpToVp(hrByFullName, fullName);
+  }
+  function resolveVpForDeliveryHead(canonicalName){
+    const fullName = CANONICAL_HEAD_FULLNAME[canonicalName] || canonicalName;
+    return walkUpToVp(hrByFullName, fullName);
+  }
+
+  // ---- Roll up Achieved + Pipeline per VP, only for FY 2026-2027 ----
+  const goalFyRows = rawBookingRows.filter(r => (r["FY"] || "").trim() === '2026-2027');
+  const vpData = {}; // vpName -> { achieved, pipeline, members: { name: {achieved, pipeline, kind} } }
+  function ensureVp(vp){ if (!vpData[vp]) vpData[vp] = { achieved: 0, pipeline: 0, members: {} }; }
+  function addMember(vp, name, achievedDelta, pipelineDelta, kind){
+    ensureVp(vp);
+    if (!vpData[vp].members[name]) vpData[vp].members[name] = { achieved: 0, pipeline: 0, kind };
+    vpData[vp].members[name].achieved += achievedDelta;
+    vpData[vp].members[name].pipeline += pipelineDelta;
+    vpData[vp].achieved += achievedDelta;
+    vpData[vp].pipeline += pipelineDelta;
+  }
+
+  goalFyRows.forEach(row => {
+    const sp = (row["Sales Person"] || "").trim();
+    if (sp) {
+      const booking = parseNum(row["Booking"]);
+      const vp = resolveVpForSalesRep(sp);
+      if (vp && booking) addMember(vp, sp, booking, 0, 'sales');
+    }
+    const owner = canonicalDeliveryHead(row["Project Owner"]);
+    if (owner) {
+      const receipt = parseNum(row["Receipt Amount"]);
+      const vp = resolveVpForDeliveryHead(owner);
+      if (vp && receipt) addMember(vp, owner, receipt, 0, 'delivery');
+    }
+  });
+  rawPipelineRows.forEach(row => {
+    const lo = (row["LeadOwner"] || "").trim();
+    if (!lo) return;
+    const val = parseNum(row["OrderValue"]);
+    const vp = resolveVpForSalesRep(lo);
+    if (vp && val) addMember(vp, lo, 0, val, 'sales');
+  });
+
+  // ---- Targets: from VP_Targets sheet, defaulting to 0 if not configured ----
+  const targetByVp = {};
+  rawVpTargetRows.forEach(r => {
+    const name = (r["VPName"] || "").trim();
+    const cr = parseNum(r["TargetCr"]);
+    if (name) targetByVp[name] = cr;
+  });
+  document.getElementById('goalTargetsMissingCard').style.display = rawVpTargetRows.length ? 'none' : 'block';
+
+  // ---- Union of VPs from rollup + configured targets, sorted by target desc ----
+  const allVps = Array.from(new Set([...Object.keys(vpData), ...Object.keys(targetByVp)]));
+  allVps.sort((a,b) => (targetByVp[b]||0) - (targetByVp[a]||0));
+
+  const crToUsd = (cr) => (cr * 10000000) / exchangeRate; // ₹1 Cr = 1,00,00,000; convert to this app's internal USD unit
+  const targetVals = allVps.map(v => crToUsd(targetByVp[v] || 0));
+  const achievedVals = allVps.map(v => (vpData[v] ? vpData[v].achieved : 0));
+  const pipelineVals = allVps.map(v => (vpData[v] ? vpData[v].pipeline : 0));
+  lastGoalVpRows = allVps.map((v,i) => ({ VP: v, TargetCr: targetByVp[v] || 0, Achieved: achievedVals[i], Pipeline: pipelineVals[i] }));
+
+  // ---- Top KPIs ----
+  const totalGoalUsd = TOP_LINE_GOAL_INR / exchangeRate;
+  const totalAchieved = achievedVals.reduce((a,b)=>a+b,0);
+  const totalPipeline = pipelineVals.reduce((a,b)=>a+b,0);
+  const totalAllocatedCr = Object.values(targetByVp).reduce((a,b)=>a+b,0);
+  document.getElementById('kpiGoalAchieved').textContent = fmtCurrencyShort(totalAchieved);
+  document.getElementById('kpiGoalAttainment').textContent = totalGoalUsd > 0 ? (totalAchieved/totalGoalUsd*100).toFixed(1) + '%' : '0%';
+  document.getElementById('kpiGoalPipeline').textContent = fmtCurrencyShort(totalPipeline);
+  document.getElementById('kpiGoalAllocated').textContent = '₹' + totalAllocatedCr.toFixed(0) + ' Cr';
+  document.getElementById('kpiGoalAllocatedNote').textContent = `of ₹140 Cr goal (${(totalAllocatedCr/140*100).toFixed(0)}% allocated)`;
+
+  // ---- Chart ----
+  document.getElementById('goalVpChartWrap').style.height = Math.max(220, allVps.length * 40 + 50) + 'px';
+  const ctx = document.getElementById('chartGoalVp').getContext('2d');
+  if (chartGoalVp) chartGoalVp.destroy();
+  const opts = chartOptions(true, 'money');
+  opts.onClick = (evt, elements) => {
+    if (!elements.length) return;
+    const idx = elements[0].index;
+    selectedGoalVp = allVps[idx];
+    renderGoalDrilldown(vpData, selectedGoalVp);
+  };
+  chartGoalVp = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: allVps,
+      datasets: [
+        { label: 'Target', data: targetVals, backgroundColor: '#D1D5DB', borderRadius: 5, maxBarThickness: 14, datalabels: datalabelConfig(false, '#6B7280') },
+        { label: 'Achieved', data: achievedVals, backgroundColor: (c) => barGradient(c, '#A8E6C3', '#1E824C'), borderRadius: 5, maxBarThickness: 14, datalabels: datalabelConfig(false, '#1E824C') },
+        { label: 'Pipeline', data: pipelineVals, backgroundColor: (c) => barGradient(c, '#F5B7B1', '#C0392B'), borderRadius: 5, maxBarThickness: 14, datalabels: datalabelConfig(false, '#C0392B') }
+      ]
+    },
+    options: opts
+  });
+
+  if (selectedGoalVp && vpData[selectedGoalVp]) renderGoalDrilldown(vpData, selectedGoalVp);
+}
+
+function renderGoalDrilldown(vpData, vpName){
+  document.getElementById('goalDrilldownTitle').textContent = `Team Breakdown — ${vpName}`;
+  const data = vpData[vpName];
+  const wrap = document.getElementById('goalDrilldownTableWrap');
+  if (!data || !Object.keys(data.members).length) {
+    lastGoalDrilldownRows = [];
+    wrap.innerHTML = `<div class="placeholder-card">No individual bookings, receipts, or pipeline found for ${vpName}'s team in FY 2026-2027 yet.</div>`;
+    return;
+  }
+  const members = Object.entries(data.members).map(([name, m]) => ({ name, ...m })).sort((a,b) => (b.achieved+b.pipeline) - (a.achieved+a.pipeline));
+  lastGoalDrilldownRows = members.map(m => ({ Name: m.name, Type: m.kind, Achieved: m.achieved, Pipeline: m.pipeline }));
+
+  let html = `<table class="data-table"><thead><tr><th>Name</th><th>Type</th><th>Achieved</th><th>Pipeline</th></tr></thead><tbody>`;
+  members.forEach(m => {
+    html += `<tr><td>${m.name}</td><td>${m.kind === 'sales' ? 'Sales' : 'Delivery'}</td><td>${fmtCurrencyFull(m.achieved)}</td><td>${fmtCurrencyFull(m.pipeline)}</td></tr>`;
+  });
+  html += `<tr class="total-row"><td>Total</td><td></td><td>${fmtCurrencyFull(data.achieved)}</td><td>${fmtCurrencyFull(data.pipeline)}</td></tr>`;
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
 }
 
 // Final funnel taxonomy agreed with the Outbound team. Order matters — it
