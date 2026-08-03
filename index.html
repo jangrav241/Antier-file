@@ -315,18 +315,23 @@
       <div class="kpi-row" style="margin-bottom:24px;">
         <div class="kpi" style="--accent:var(--blue)">
           <div class="kpi-label">FY26-27 Top-Line Goal</div>
-          <div class="kpi-value">₹140 Cr</div>
-          <div class="kpi-sub">Company-wide target set by leadership</div>
+          <div class="kpi-value" id="kpiGoalTarget">—</div>
+          <div class="kpi-sub">Company-wide target set by leadership (₹140 Cr)</div>
         </div>
         <div class="kpi" style="--accent:var(--teal)">
           <div class="kpi-label">Achieved So Far</div>
           <div class="kpi-value" id="kpiGoalAchieved">—</div>
           <div class="kpi-sub" id="kpiGoalAttainmentWrap"><span id="kpiGoalAttainment">—</span></div>
         </div>
-        <div class="kpi" style="--accent:var(--orange)">
+        <div class="kpi" style="--accent:var(--orange); cursor:pointer;" onclick="goToSalesPipeline()">
           <div class="kpi-label">Pipeline (Sales)</div>
           <div class="kpi-value" id="kpiGoalPipeline">—</div>
-          <div class="kpi-sub">Open opportunities, sales team only</div>
+          <div class="kpi-sub">Open opportunities, sales team only — click to view →</div>
+        </div>
+        <div class="kpi" style="--accent:var(--red); cursor:pointer;" onclick="goToDeliveryProjection()">
+          <div class="kpi-label">Delivery Receipt Projection</div>
+          <div class="kpi-value" id="kpiGoalDeliveryProjection">—</div>
+          <div class="kpi-sub">EWMS Received + Pending, all verticals — click to view →</div>
         </div>
         <div class="kpi" style="--accent:var(--amber)">
           <div class="kpi-label">Target Allocated to VPs</div>
@@ -389,7 +394,7 @@
         </div>
       </div>
 
-      <div class="section">
+      <div class="section" id="salesPipelineSection">
         <div class="section-head">
           <div><span class="section-title">Bookings vs Pipeline — by Sales Person</span><span class="live-pill">Live</span></div>
           <div class="section-note">
@@ -458,7 +463,7 @@
         <div class="section-export"><button class="export-mini" onclick="downloadCsv('receipts_by_delivery_head.csv', lastReceiptsChartRows)">⬇ Export CSV</button></div>
       </div>
 
-      <div class="section">
+      <div class="section" id="deliveryProjectionSection">
         <div class="section-head">
           <div><span class="section-title">Projection by Delivery Head — EWMS</span><span class="live-pill">Live</span></div>
           <div class="section-note">
@@ -611,7 +616,7 @@
         <div class="kpi" style="--accent:var(--blue)">
           <div class="kpi-label">Total Employees</div>
           <div class="kpi-value" id="kpiHrTotal">—</div>
-          <div class="kpi-sub">All records in EWMS, any status</div>
+          <div class="kpi-sub">Working + Benched + Resigned + PIP (excludes Inactive)</div>
         </div>
         <div class="kpi" style="--accent:var(--teal)">
           <div class="kpi-label">Working</div>
@@ -619,14 +624,19 @@
           <div class="kpi-sub"><span id="kpiHrWorkingPct">—</span> of total</div>
         </div>
         <div class="kpi" style="--accent:var(--amber)">
-          <div class="kpi-label">Benched</div>
+          <div class="kpi-label">Bench</div>
           <div class="kpi-value" id="kpiHrBenched">—</div>
           <div class="kpi-sub">Currently on bench</div>
         </div>
         <div class="kpi" style="--accent:var(--red)">
-          <div class="kpi-label">Resigned / Inactive</div>
-          <div class="kpi-value" id="kpiHrLeft">—</div>
-          <div class="kpi-sub">Includes Resigned + Inactive status</div>
+          <div class="kpi-label">Resign</div>
+          <div class="kpi-value" id="kpiHrResigned">—</div>
+          <div class="kpi-sub">Status = Resigned</div>
+        </div>
+        <div class="kpi" style="--accent:var(--orange)">
+          <div class="kpi-label">PIP</div>
+          <div class="kpi-value" id="kpiHrPip">—</div>
+          <div class="kpi-sub">Currently on a Performance Improvement Plan</div>
         </div>
       </div>
 
@@ -821,6 +831,15 @@ function switchDashboard(which){
   document.querySelectorAll('.dash-tab').forEach(b => b.classList.toggle('active', b.dataset.dash === which));
 }
 
+function goToSalesPipeline(){
+  switchDashboard('sales');
+  setTimeout(() => document.getElementById('salesPipelineSection').scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+function goToDeliveryProjection(){
+  switchDashboard('receipt');
+  setTimeout(() => document.getElementById('deliveryProjectionSection').scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+}
+
 // ---------- Fetching ----------
 async function fetchCsv(url){
   // Google's own serving layer can cache a published CSV URL for a few
@@ -990,6 +1009,7 @@ async function loadEwms(){
     const rows = await fetchCsv(EWMS_CSV);
     rawEwmsRows = rows;
     renderEwms(rows);
+    tryRenderGoals();
   } catch (err) {
     console.error('EWMS fetch failed:', err);
     const card = document.getElementById('ewmsErrorCard');
@@ -1098,7 +1118,6 @@ async function loadHrData(){
 }
 
 function renderHr(rows){
-  const total = rows.length;
   const byStatus = {};
   const byDept = {};
   rows.forEach(r => {
@@ -1110,13 +1129,16 @@ function renderHr(rows){
 
   const working = byStatus["Working"] || 0;
   const benched = byStatus["Benched"] || 0;
-  const resignedOrInactive = (byStatus["Resigned"] || 0) + (byStatus["Inactive"] || 0);
+  const resigned = byStatus["Resigned"] || 0;
+  const pip = byStatus["PIP"] || 0;
+  const total = working + benched + resigned + pip; // excludes Inactive, per CEO's requested definition
 
   document.getElementById('kpiHrTotal').textContent = total.toLocaleString();
   document.getElementById('kpiHrWorking').textContent = working.toLocaleString();
   document.getElementById('kpiHrWorkingPct').textContent = total > 0 ? (working/total*100).toFixed(0) + '%' : '0%';
   document.getElementById('kpiHrBenched').textContent = benched.toLocaleString();
-  document.getElementById('kpiHrLeft').textContent = resignedOrInactive.toLocaleString();
+  document.getElementById('kpiHrResigned').textContent = resigned.toLocaleString();
+  document.getElementById('kpiHrPip').textContent = pip.toLocaleString();
 
   // ---- Chart: headcount by department ----
   const depts = Object.keys(byDept).sort((a,b) => byDept[b] - byDept[a]);
@@ -1302,14 +1324,18 @@ function renderGoals(){
 
   // ---- Top KPIs ----
   const totalGoalUsd = TOP_LINE_GOAL_INR / exchangeRate;
-  const totalAchieved = totalAchievedCompanyWide;
+  const totalAchieved = totalCompanyReceipt; // Achieved = Total Receipts collected in FY26-27, per CEO's definition
   const totalPipeline = pipelineVals.reduce((a,b)=>a+b,0);
   const totalAllocatedCr = Object.values(targetByVp).reduce((a,b)=>a+b,0);
+  const deliveryProjectionUsd = typeof lastTotalProjection === 'number' ? lastTotalProjection : 0;
+
+  document.getElementById('kpiGoalTarget').textContent = fmtCurrencyShort(totalGoalUsd);
   document.getElementById('kpiGoalAchieved').textContent = fmtCurrencyShort(totalAchieved);
   document.getElementById('kpiGoalAttainment').textContent = (totalGoalUsd > 0 ? (totalAchieved/totalGoalUsd*100).toFixed(1) + '%' : '0%')
-    + (totalUnmapped > 0 ? ` of goal · ${fmtCurrencyShort(totalUnmapped)} not yet mapped to a VP` : ' of goal');
+    + (unmappedReceipt > 0 ? ` of goal · ${fmtCurrencyShort(unmappedReceipt)} in receipts not yet mapped to a VP` : ' of goal');
   document.getElementById('kpiGoalPipeline').textContent = fmtCurrencyShort(totalPipeline);
-  document.getElementById('kpiGoalAllocated').textContent = '₹' + totalAllocatedCr.toFixed(0) + ' Cr';
+  document.getElementById('kpiGoalDeliveryProjection').textContent = fmtCurrencyShort(deliveryProjectionUsd);
+  document.getElementById('kpiGoalAllocated').textContent = fmtCurrencyShort(crToUsd(totalAllocatedCr));
   document.getElementById('kpiGoalAllocatedNote').textContent = `of ₹140 Cr goal (${(totalAllocatedCr/140*100).toFixed(0)}% allocated)`;
 
   // ---- Chart ----
