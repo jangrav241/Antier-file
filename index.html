@@ -333,23 +333,13 @@
           <div class="kpi-value" id="kpiGoalDeliveryProjection">—</div>
           <div class="kpi-sub">EWMS Received + Pending, all verticals — click to view →</div>
         </div>
-        <div class="kpi" style="--accent:var(--amber)">
-          <div class="kpi-label">Target Allocated to VPs</div>
-          <div class="kpi-value" id="kpiGoalAllocated">—</div>
-          <div class="kpi-sub" id="kpiGoalAllocatedNote">—</div>
-        </div>
-      </div>
-
-      <div id="goalTargetsMissingCard" class="placeholder-card" style="display:none; margin-bottom:24px;">
-        VP targets aren't set up yet. Create a tab called <b>VP_Targets</b> in your Google Sheet with two columns — <b>VPName</b> and <b>TargetCr</b> — one row per VP (names are listed below once detected), publish it to web as CSV, and send me the link. Until then, targets show as ₹0 and only Achieved/Pipeline are real.
       </div>
 
       <div class="section">
         <div class="section-head">
-          <div><span class="section-title">VP Leader — Target vs Achieved vs Pipeline</span><span class="live-pill">Live</span></div>
+          <div><span class="section-title">VP Leader — Achieved vs Pipeline</span><span class="live-pill">Live</span></div>
           <div class="section-note">
-            <span class="legend-dot" style="background:#9CA3AF"></span>Target
-            <span class="legend-dot" style="background:#1E824C; margin-left:14px;"></span>Achieved
+            <span class="legend-dot" style="background:#1E824C"></span>Achieved
             <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Pipeline
           </div>
         </div>
@@ -644,7 +634,7 @@
         <div class="section-head">
           <div><span class="section-title">Headcount by Department</span><span class="live-pill">Live</span></div>
         </div>
-        <div class="section-desc">All 783 employee records, grouped by department, sorted by headcount.</div>
+        <div class="section-desc">Working, Benched, Resigned, and PIP employees only (excludes Inactive), grouped by department, sorted by headcount.</div>
         <div class="chart-scroll"><div class="chart-wrap" id="hrDeptChartWrap"><canvas id="chartHrDept"></canvas></div></div>
         <div class="section-export"><button class="export-mini" onclick="downloadCsv('headcount_by_department.csv', lastHrDeptRows)">⬇ Export CSV</button></div>
       </div>
@@ -905,6 +895,7 @@ function reRenderAll(){
   applyBookingFilter();
   if (rawEwmsRows.length) renderEwms(rawEwmsRows);
   if (rawPipelineRows.length) renderPipelineSection(rawPipelineRows);
+  tryRenderGoals();
 }
 
 // ---------- Load ----------
@@ -1118,11 +1109,16 @@ async function loadHrData(){
 }
 
 function renderHr(rows){
+  const ACTIVE_STATUSES = ['Working', 'Benched', 'Resigned', 'PIP'];
+  const activeRows = rows.filter(r => ACTIVE_STATUSES.includes((r["EmployeeStatus"] || "").trim()));
+
   const byStatus = {};
   const byDept = {};
   rows.forEach(r => {
     const status = (r["EmployeeStatus"] || "Unknown").trim();
     byStatus[status] = (byStatus[status] || 0) + 1;
+  });
+  activeRows.forEach(r => {
     const dept = (r["Department"] || "Unassigned").trim() || "Unassigned";
     byDept[dept] = (byDept[dept] || 0) + 1;
   });
@@ -1234,12 +1230,26 @@ function walkUpToVp(hrByKey, fullName, maxHops){
 
 function renderGoals(){
   // ---- Build HR lookup indexes ----
+  const NON_REVENUE_VP_DEPARTMENTS = ['HR', 'IT & DevOps', 'Finance', 'Legal', 'Admin', 'Management'];
+  const REVENUE_DEPARTMENTS = new Set(['Sales', 'DeFI', 'CeFI', 'Blockchain', 'PlaySphere – Gaming & Metaverse, UI/UX', 'Helium Wars', 'ASB', 'AI', 'Instanodes', 'Marketing as a Service', 'Growth', 'Govt Wing', 'Technology & Digital Operations']);
+  function isRevenueDept(dept){ return REVENUE_DEPARTMENTS.has((dept||'').trim()); }
+
   const hrByFullName = {};
   const salesFirstNameIndex = {};
   rawHrRows.forEach(r => {
     const name = (r.Name || '').trim();
     if (!name) return;
-    hrByFullName[normNameKey(name)] = r;
+    const key = normNameKey(name);
+    const existing = hrByFullName[key];
+    // Multiple different people can share the same full name in this dataset
+    // (e.g. two "Gagandeep Singh"s, two "Amandeep Kaur"s). When that happens,
+    // prefer whichever record is VP-designated, then whichever is on the
+    // revenue side (Sales/Delivery) over a support function (HR/IT/Finance).
+    if (!existing
+        || (isVpDesignation(r.Designation) && !isVpDesignation(existing.Designation))
+        || (isRevenueDept(r.Department) && !isRevenueDept(existing.Department))) {
+      hrByFullName[key] = r;
+    }
     if ((r.Department || '').trim() === 'Sales') {
       const first = name.split(/\s+/)[0].toLowerCase();
       if (!salesFirstNameIndex[first]) salesFirstNameIndex[first] = name;
@@ -1310,10 +1320,13 @@ function renderGoals(){
     const cr = parseNum(r["TargetCr"]);
     if (name) targetByVp[name] = cr;
   });
-  document.getElementById('goalTargetsMissingCard').style.display = rawVpTargetRows.length ? 'none' : 'block';
 
   // ---- Union of VPs from rollup + configured targets, sorted by target desc ----
-  const allVps = Array.from(new Set([...Object.keys(vpData), ...Object.keys(targetByVp)]));
+  const allVps = Array.from(new Set([...Object.keys(vpData), ...Object.keys(targetByVp)]))
+    .filter(vp => {
+      const rec = hrByFullName[normNameKey(vp)];
+      return !rec || !NON_REVENUE_VP_DEPARTMENTS.includes((rec.Department || '').trim());
+    });
   allVps.sort((a,b) => (targetByVp[b]||0) - (targetByVp[a]||0));
 
   const crToUsd = (cr) => (cr * 10000000) / exchangeRate; // ₹1 Cr = 1,00,00,000; convert to this app's internal USD unit
@@ -1326,7 +1339,6 @@ function renderGoals(){
   const totalGoalUsd = TOP_LINE_GOAL_INR / exchangeRate;
   const totalAchieved = totalCompanyReceipt; // Achieved = Total Receipts collected in FY26-27, per CEO's definition
   const totalPipeline = pipelineVals.reduce((a,b)=>a+b,0);
-  const totalAllocatedCr = Object.values(targetByVp).reduce((a,b)=>a+b,0);
   const deliveryProjectionUsd = typeof lastTotalProjection === 'number' ? lastTotalProjection : 0;
 
   document.getElementById('kpiGoalTarget').textContent = fmtCurrencyShort(totalGoalUsd);
@@ -1335,8 +1347,6 @@ function renderGoals(){
     + (unmappedReceipt > 0 ? ` of goal · ${fmtCurrencyShort(unmappedReceipt)} in receipts not yet mapped to a VP` : ' of goal');
   document.getElementById('kpiGoalPipeline').textContent = fmtCurrencyShort(totalPipeline);
   document.getElementById('kpiGoalDeliveryProjection').textContent = fmtCurrencyShort(deliveryProjectionUsd);
-  document.getElementById('kpiGoalAllocated').textContent = fmtCurrencyShort(crToUsd(totalAllocatedCr));
-  document.getElementById('kpiGoalAllocatedNote').textContent = `of ₹140 Cr goal (${(totalAllocatedCr/140*100).toFixed(0)}% allocated)`;
 
   // ---- Chart ----
   document.getElementById('goalVpChartWrap').style.height = Math.max(220, allVps.length * 40 + 50) + 'px';
@@ -1354,8 +1364,7 @@ function renderGoals(){
     data: {
       labels: allVps,
       datasets: [
-        { label: 'Target', data: targetVals, backgroundColor: '#D1D5DB', borderRadius: 5, maxBarThickness: 14, datalabels: datalabelConfig(false, '#6B7280') },
-        { label: 'Achieved', data: achievedVals, backgroundColor: (c) => barGradient(c, '#A8E6C3', '#1E824C'), borderRadius: 5, maxBarThickness: 14, datalabels: datalabelConfig(false, '#1E824C') },
+        { label: 'Achieved', data: achievedVals, backgroundColor: (c) => barGradient(c, '#A8E6C3', '#1E824C'), borderRadius: 5, maxBarThickness: 16, datalabels: datalabelConfig(false, '#1E824C') },
         { label: 'Pipeline', data: pipelineVals, backgroundColor: (c) => barGradient(c, '#F5B7B1', '#C0392B'), borderRadius: 5, maxBarThickness: 14, datalabels: datalabelConfig(false, '#C0392B') }
       ]
     },
