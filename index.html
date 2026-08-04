@@ -314,7 +314,7 @@
     <div class="dashboard-tabs">
       <button class="dash-tab active" data-dash="goal" onclick="switchDashboard('goal')">FY26-27 Goal</button>
       <button class="dash-tab" data-dash="sales" onclick="switchDashboard('sales')">Sales</button>
-      <button class="dash-tab" data-dash="receipt" onclick="switchDashboard('receipt')">Receipt</button>
+      <button class="dash-tab" data-dash="receipt" onclick="switchDashboard('receipt')">Business (Receipt)</button>
       <button class="dash-tab" data-dash="linkedin" onclick="switchDashboard('linkedin')">Outbound LinkedIn</button>
       <button class="dash-tab" data-dash="bank" onclick="switchDashboard('bank')">Bank (Treasury)</button>
       <button class="dash-tab" data-dash="hr" onclick="switchDashboard('hr')">HR</button>
@@ -344,7 +344,7 @@
         <div class="kpi" style="--accent:var(--red); cursor:pointer;" onclick="goToDeliveryProjection()">
           <div class="kpi-label">Delivery Receipt Projection</div>
           <div class="kpi-value" id="kpiGoalDeliveryProjection">—</div>
-          <div class="kpi-sub">EWMS Received + Pending, all verticals — click to view →</div>
+          <div class="kpi-sub">EWMS Pending only — projection for current quarter, all verticals — click to view →</div>
         </div>
       </div>
 
@@ -691,6 +691,48 @@
   </div>
 
 <script>
+// ---------- Password gate (runs first, independent of everything below) ----------
+// Client-side only — deters casual access, not a real security boundary.
+// This must run before any risky code (e.g. Chart.js registration), so that
+// if an external CDN script fails to load in some environment, the gate
+// still works instead of silently breaking along with the rest of the page.
+const GATE_PASSWORD_HASH = "e94a59a6";
+const GATE_STORAGE_KEY = "antier_dashboard_unlocked_v1";
+
+function simpleHashHex(text){
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+function unlockDashboard(){
+  document.getElementById('passwordGate').style.display = 'none';
+  document.getElementById('realDashboardContent').style.display = 'block';
+  loadAll();
+}
+
+document.getElementById('passwordGateForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const entered = document.getElementById('passwordGateInput').value;
+  const hash = simpleHashHex(entered);
+  if (hash === GATE_PASSWORD_HASH) {
+    try { localStorage.setItem(GATE_STORAGE_KEY, '1'); } catch (err) {}
+    unlockDashboard();
+  } else {
+    document.getElementById('passwordGateError').style.display = 'block';
+  }
+});
+
+const GATE_PRODUCTION_HOSTNAMES = ['antier-file-r13b.vercel.app', 'antier-file-r13b-vikas-9231s-projects.vercel.app'];
+const isProductionHost = GATE_PRODUCTION_HOSTNAMES.includes(window.location.hostname);
+
+let alreadyUnlockedOnLoad = false;
+try { alreadyUnlockedOnLoad = localStorage.getItem(GATE_STORAGE_KEY) === '1'; } catch (err) {}
+if (!isProductionHost || alreadyUnlockedOnLoad) unlockDashboard();
+
 const BOOKINGS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=456245453&single=true&output=csv";
 const PIPELINE_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=682382270&single=true&output=csv";
 const EWMS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=249659915&single=true&output=csv";
@@ -1354,7 +1396,7 @@ function renderGoals(){
   const totalGoalUsd = TOP_LINE_GOAL_INR / exchangeRate;
   const totalAchieved = totalCompanyReceipt; // Achieved = Total Receipts collected in FY26-27, per CEO's definition
   const totalPipeline = pipelineVals.reduce((a,b)=>a+b,0);
-  const deliveryProjectionUsd = typeof lastTotalProjection === 'number' ? lastTotalProjection : 0;
+  const deliveryProjectionUsd = Object.values(lastEwmsByHead).reduce((s,h) => s + (h.pending || 0), 0);
 
   document.getElementById('kpiGoalTarget').textContent = fmtCurrencyShort(totalGoalUsd);
   document.getElementById('kpiGoalAchieved').textContent = fmtCurrencyShort(totalAchieved);
@@ -1399,13 +1441,22 @@ function renderGoalDrilldown(vpData, vpName){
     return;
   }
   const members = Object.entries(data.members).map(([name, m]) => ({ name, ...m })).sort((a,b) => (b.achieved+b.pipeline) - (a.achieved+a.pipeline));
-  lastGoalDrilldownRows = members.map(m => ({ Name: m.name, Type: m.kind, Achieved: m.achieved, Pipeline: m.pipeline }));
-
-  let html = `<table class="data-table"><thead><tr><th>Name</th><th>Type</th><th>Achieved</th><th>Pipeline</th></tr></thead><tbody>`;
-  members.forEach(m => {
-    html += `<tr><td>${m.name}</td><td>${m.kind === 'sales' ? 'Sales' : 'Delivery'}</td><td>${fmtCurrencyFull(m.achieved)}</td><td>${fmtCurrencyFull(m.pipeline)}</td></tr>`;
+  const ewmsFor = (m) => m.kind === 'delivery' ? (lastEwmsByHead[m.name] || { received: 0, pending: 0 }) : null;
+  lastGoalDrilldownRows = members.map(m => {
+    const e = ewmsFor(m);
+    return { Name: m.name, Type: m.kind, Achieved: m.achieved, Pipeline: m.pipeline, EWMS_Received: e ? e.received : '', EWMS_Pending: e ? e.pending : '' };
   });
-  html += `<tr class="total-row"><td>Total</td><td></td><td>${fmtCurrencyFull(data.achieved)}</td><td>${fmtCurrencyFull(data.pipeline)}</td></tr>`;
+
+  let totalEwmsReceived = 0, totalEwmsPending = 0;
+  let html = `<table class="data-table"><thead><tr><th>Name</th><th>Type</th><th>Achieved</th><th>Pipeline</th><th>EWMS Received</th><th>EWMS Pending</th></tr></thead><tbody>`;
+  members.forEach(m => {
+    const e = ewmsFor(m);
+    const receivedCell = e ? fmtCurrencyFull(e.received) : '—';
+    const pendingCell = e ? fmtCurrencyFull(e.pending) : '—';
+    if (e) { totalEwmsReceived += e.received; totalEwmsPending += e.pending; }
+    html += `<tr><td>${m.name}</td><td>${m.kind === 'sales' ? 'Sales' : 'Delivery'}</td><td>${fmtCurrencyFull(m.achieved)}</td><td>${fmtCurrencyFull(m.pipeline)}</td><td>${receivedCell}</td><td>${pendingCell}</td></tr>`;
+  });
+  html += `<tr class="total-row"><td>Total</td><td></td><td>${fmtCurrencyFull(data.achieved)}</td><td>${fmtCurrencyFull(data.pipeline)}</td><td>${fmtCurrencyFull(totalEwmsReceived)}</td><td>${fmtCurrencyFull(totalEwmsPending)}</td></tr>`;
   html += `</tbody></table>`;
   wrap.innerHTML = html;
 }
@@ -2020,36 +2071,8 @@ function renderPipelineSection(pipelineRows){
   document.getElementById('pipelineTableWrap').innerHTML = html;
 }
 
-// ---------- Password gate (client-side only — deters casual access, not a real security boundary) ----------
-const GATE_PASSWORD_HASH = "8c40307369a02ecbf7dc83720adda8a2ee7c326f053b7490e49da5f95a0e9e26";
-const GATE_STORAGE_KEY = "antier_dashboard_unlocked_v1";
 
-async function sha256Hex(text){
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
-function unlockDashboard(){
-  document.getElementById('passwordGate').style.display = 'none';
-  document.getElementById('realDashboardContent').style.display = 'block';
-  loadAll();
-}
-
-document.getElementById('passwordGateForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const entered = document.getElementById('passwordGateInput').value;
-  const hash = await sha256Hex(entered);
-  if (hash === GATE_PASSWORD_HASH) {
-    try { localStorage.setItem(GATE_STORAGE_KEY, '1'); } catch (err) {}
-    unlockDashboard();
-  } else {
-    document.getElementById('passwordGateError').style.display = 'block';
-  }
-});
-
-let alreadyUnlocked = false;
-try { alreadyUnlocked = localStorage.getItem(GATE_STORAGE_KEY) === '1'; } catch (err) {}
-if (alreadyUnlocked) unlockDashboard();
 </script>
 </body>
 </html>
