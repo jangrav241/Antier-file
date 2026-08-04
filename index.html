@@ -1315,6 +1315,18 @@ function renderGoals(){
     }
   });
 
+  // Explicit overrides for known name collisions in the HR data — guarantees
+  // the correct person by EmployeeCode regardless of any other heuristic.
+  // Add more entries here as additional duplicates are found.
+  const KNOWN_NAME_OVERRIDE_EMPLOYEE_CODES = { 'arun muwal': 'ATR1169' };
+  Object.entries(KNOWN_NAME_OVERRIDE_EMPLOYEE_CODES).forEach(([nameKey, code]) => {
+    const correct = rawHrRows.find(r => (r.EmployeeCode || '').trim() === code);
+    if (correct) {
+      hrByFullName[nameKey] = correct;
+      if ((correct.Department || '').trim() === 'Sales') salesFullNameIndex[nameKey] = correct;
+    }
+  });
+
   function resolveSalesRepIdentity(repName){
     const key = normNameKey(repName);
     const rec = salesFullNameIndex[key] || hrByFullName[key];
