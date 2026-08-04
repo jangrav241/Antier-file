@@ -731,7 +731,7 @@ const isProductionHost = GATE_PRODUCTION_HOSTNAMES.includes(window.location.host
 
 let alreadyUnlockedOnLoad = false;
 try { alreadyUnlockedOnLoad = localStorage.getItem(GATE_STORAGE_KEY) === '1'; } catch (err) {}
-if (!isProductionHost || alreadyUnlockedOnLoad) unlockDashboard();
+if (!isProductionHost || alreadyUnlockedOnLoad) setTimeout(unlockDashboard, 0);
 
 const BOOKINGS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=456245453&single=true&output=csv";
 const PIPELINE_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=682382270&single=true&output=csv";
