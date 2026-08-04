@@ -253,6 +253,19 @@
 </head>
 <body>
 
+  <div id="passwordGate" style="position:fixed; inset:0; background:#F4F5F7; z-index:9999; display:flex; align-items:center; justify-content:center;">
+    <form id="passwordGateForm" style="background:#fff; border:1px solid #E3E6EB; border-radius:16px; padding:36px 32px; width:320px; box-shadow:0 4px 16px rgba(16,24,40,0.08); text-align:center;">
+      <img src="assets/antier-logo.png" alt="Antier" style="height:36px; margin-bottom:20px;">
+      <div style="font-family:'Space Grotesk', sans-serif; font-weight:600; font-size:16px; margin-bottom:16px; color:#14171F;">This dashboard is private</div>
+      <input type="password" id="passwordGateInput" placeholder="Enter password" autofocus
+        style="width:100%; padding:10px 12px; border:1px solid #E3E6EB; border-radius:8px; font-family:'Inter', sans-serif; font-size:14px; margin-bottom:12px;">
+      <button type="submit" style="width:100%; padding:10px; border:none; border-radius:8px; background:#14171F; color:#fff; font-family:'Inter', sans-serif; font-weight:500; font-size:14px; cursor:pointer;">Unlock</button>
+      <div id="passwordGateError" style="display:none; color:#C0392B; font-size:12.5px; margin-top:10px;">Incorrect password — try again.</div>
+    </form>
+  </div>
+
+  <div id="realDashboardContent" style="display:none;">
+
   <header>
     <div class="header-row">
       <div>
@@ -674,6 +687,8 @@
   </main>
 
   <div class="confidential-footer">Confidential - All Rights Reserved, Antier Solutions Private Limited 2026-2027</div>
+
+  </div>
 
 <script>
 const BOOKINGS_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=456245453&single=true&output=csv";
@@ -2005,7 +2020,36 @@ function renderPipelineSection(pipelineRows){
   document.getElementById('pipelineTableWrap').innerHTML = html;
 }
 
-loadAll();
+// ---------- Password gate (client-side only — deters casual access, not a real security boundary) ----------
+const GATE_PASSWORD_HASH = "8c40307369a02ecbf7dc83720adda8a2ee7c326f053b7490e49da5f95a0e9e26";
+const GATE_STORAGE_KEY = "antier_dashboard_unlocked_v1";
+
+async function sha256Hex(text){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function unlockDashboard(){
+  document.getElementById('passwordGate').style.display = 'none';
+  document.getElementById('realDashboardContent').style.display = 'block';
+  loadAll();
+}
+
+document.getElementById('passwordGateForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const entered = document.getElementById('passwordGateInput').value;
+  const hash = await sha256Hex(entered);
+  if (hash === GATE_PASSWORD_HASH) {
+    try { localStorage.setItem(GATE_STORAGE_KEY, '1'); } catch (err) {}
+    unlockDashboard();
+  } else {
+    document.getElementById('passwordGateError').style.display = 'block';
+  }
+});
+
+let alreadyUnlocked = false;
+try { alreadyUnlocked = localStorage.getItem(GATE_STORAGE_KEY) === '1'; } catch (err) {}
+if (alreadyUnlocked) unlockDashboard();
 </script>
 </body>
 </html>
