@@ -1293,6 +1293,7 @@ function renderGoals(){
 
   const hrByFullName = {};
   const salesFirstNameIndex = {};
+  const salesFullNameIndex = {}; // exact full name, scoped to Sales dept only — avoids any cross-department name collision
   rawHrRows.forEach(r => {
     const name = (r.Name || '').trim();
     if (!name) return;
@@ -1310,12 +1311,14 @@ function renderGoals(){
     if ((r.Department || '').trim() === 'Sales') {
       const first = name.split(/\s+/)[0].toLowerCase();
       if (!salesFirstNameIndex[first]) salesFirstNameIndex[first] = name;
+      salesFullNameIndex[key] = r;
     }
   });
 
   function resolveSalesRepIdentity(repName){
     const key = normNameKey(repName);
-    const canonicalName = hrByFullName[key] ? repName : (salesFirstNameIndex[key.split(/\s+/)[0]] || repName);
+    const rec = salesFullNameIndex[key] || hrByFullName[key];
+    const canonicalName = rec ? rec.Name : (salesFirstNameIndex[key.split(/\s+/)[0]] || repName);
     return { canonicalName, vp: walkUpToVp(hrByFullName, canonicalName) };
   }
   function resolveVpForDeliveryHead(canonicalName){
