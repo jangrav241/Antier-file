@@ -717,6 +717,10 @@
       <div class="section">
         <div class="section-head">
           <div><span class="section-title">Department P&amp;L — Cost vs Revenue</span><span class="live-pill">Live</span></div>
+          <div class="section-note">
+            <span class="legend-dot" style="background:#1E824C"></span>Revenue
+            <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Salary Cost
+          </div>
         </div>
         <div class="section-desc">
           Salary cost by department against the revenue it generates — Receipts collected for delivery verticals, Booking value for Sales.
@@ -724,7 +728,8 @@
           Support functions (HR, Finance, Legal, IT, Admin, Management) have no revenue line of their own, so their margin is left blank rather than shown as a loss.
           <span id="hrCostPerfMonthNote" style="display:block; margin-top:4px; font-style:italic;"></span>
         </div>
-        <div id="hrCostPerfTableWrap" class="chart-scroll"></div>
+        <div class="chart-scroll"><div class="chart-wrap" id="hrCostPnlChartWrap"><canvas id="chartHrCostPnl"></canvas></div></div>
+        <div id="hrCostPerfTableWrap" class="chart-scroll" style="margin-top:20px;"></div>
         <div class="section-export"><button class="export-mini" onclick="downloadCsv('department_pnl.csv', lastHrCostPerfRows)">⬇ Export CSV</button></div>
       </div>
 
@@ -833,8 +838,8 @@ const HR_COST_LABEL_MAP = {
   'Hellium Wars - Danesh': { canonical: 'Danesh', type: 'delivery' },
   'Marketing As A Service - Dev Junas': { canonical: 'Devender', type: 'delivery' },
   'Tech AI - Nikhil Uppal': { canonical: 'Nikhil', type: 'delivery' },
-  'Technology & Digital Operations - Deepak Sharma': { canonical: 'Deepak', type: 'unmapped', note: "Deepak's Receipts figure covers ASB + Tech & Digital Ops combined, but this sheet splits ASB's cost under \"Gurinder Singh\" instead — pairing this cost line alone with his combined revenue would overstate margin. Needs reconciliation." },
-  'Gurinder Singh - ASB': { canonical: null, type: 'unmapped', note: 'ASB revenue is currently attributed to Deepak in Bookings/Receipts, not Gurinder Singh. Confirm who should own this vertical\'s P&L before joining.' },
+  'Technology & Digital Operations - Deepak Sharma': { canonical: 'Deepak', type: 'delivery' },
+  'Gurinder Singh - ASB': { canonical: 'Deepak', type: 'delivery', note: 'Merged with Technology & Digital Operations — Deepak owns ASB per Bookings/Receipts, and his Receipts figure already covers both verticals combined, so their costs are summed together here too.' },
   'Growth - Nishant Mitra': { canonical: 'Nishant', type: 'delivery' },
   'InstaNode - Hardeep Singh': { canonical: 'Hardeep', type: 'delivery' },
   'Marketing - Dev Junas': { canonical: null, type: 'support', note: 'General marketing overhead — no distinct revenue line in Bookings/Receipts (separate from "Marketing as a Service").' },
@@ -845,6 +850,13 @@ const HR_COST_LABEL_MAP = {
   'IT/DEVOPS - Jupinder Singh': { canonical: null, type: 'support' },
   'Admin - Jagdeep Singh': { canonical: null, type: 'support' },
   'Management': { canonical: null, type: 'support' }
+};
+
+// Friendlier display labels for merged rows, where the raw cost-sheet labels don't read
+// well concatenated (e.g. "Gurinder Singh - ASB" is Person-then-Dept, reversed from the
+// usual "Dept - Person" pattern the other rows use).
+const MERGED_ROW_LABEL_OVERRIDES = {
+  'delivery:Deepak': 'Deepak (ASB + Technology & Digital Operations)'
 };
 
 // FY26-27 Top-Line Goal — ₹140 Cr, VP-wise bifurcation
@@ -1381,28 +1393,58 @@ function tryRenderHrCostPerf(){
   if (rawHrCostRows.length) renderHrCostPerf();
 }
 
+let chartHrCostPnl;
 function renderHrCostPerf(){
   const wrap = document.getElementById('hrCostPerfTableWrap');
   const noteWrap = document.getElementById('hrCostPerfMonthNote');
   if (!wrap) return;
 
-  const rows = rawHrCostRows.map(dept => {
+  // Some cost-sheet rows share a canonical revenue owner (e.g. ASB and Technology &
+  // Digital Operations both roll up to Deepak in Bookings/Receipts) — merge those into
+  // one row (summing headcount + cost) BEFORE joining revenue, so a shared revenue figure
+  // never gets counted twice against two separate cost lines.
+  const grouped = {};
+  const passthrough = [];
+  rawHrCostRows.forEach(dept => {
     const latest = dept.months[dept.months.length - 1];
     const mapping = HR_COST_LABEL_MAP[dept.label] || { canonical: null, type: 'unmapped', note: 'Not recognized — add this label to HR_COST_LABEL_MAP.' };
+    if (mapping.canonical && (mapping.type === 'delivery' || mapping.type === 'sales_vp')) {
+      const key = mapping.type + ':' + mapping.canonical;
+      if (!grouped[key]) grouped[key] = { canonical: mapping.canonical, type: mapping.type, note: mapping.note, labels: [], month: latest.label, headcount: 0, costInr: 0 };
+      grouped[key].labels.push(dept.label);
+      grouped[key].headcount += latest.count;
+      grouped[key].costInr += latest.salary;
+    } else {
+      passthrough.push({ label: dept.label, month: latest.label, headcount: latest.count, costInr: latest.salary, mapping });
+    }
+  });
+  const mergedRows = Object.values(grouped).map(g => ({
+    label: MERGED_ROW_LABEL_OVERRIDES[g.canonical + ':' + g.type] || (g.labels.length > 1 ? `${g.canonical} (${g.labels.join(' + ')})` : g.labels[0]),
+    month: g.month, headcount: g.headcount, costInr: g.costInr,
+    mapping: { canonical: g.canonical, type: g.type, note: g.note }
+  }));
+
+  const rows = [...mergedRows, ...passthrough].map(d => {
+    const mapping = d.mapping;
     let revenue = null;
     if (mapping.type === 'delivery' && mapping.canonical) revenue = lastReceiptByOwner[mapping.canonical] || 0;
     else if (mapping.type === 'sales_vp' && mapping.canonical) revenue = lastVpAchievedByName[mapping.canonical];
     const hasRevenue = revenue !== null && revenue !== undefined;
-    const cost = latest.salary;
+    // Salary Cost comes from the accounts sheet in raw INR rupees, while Revenue (Booking/
+    // Receipts) is already in this app's internal USD-equivalent unit — convert cost to the
+    // same unit before comparing them, or the $ toggle shows rupees mislabeled as dollars
+    // (and the ₹ toggle double-converts, inflating it ~84x).
+    const costInr = d.costInr;
+    const cost = costInr / exchangeRate;
     const margin = hasRevenue ? revenue - cost : null;
     const marginPct = hasRevenue && revenue > 0 ? (margin / revenue * 100) : null;
     const costRatio = hasRevenue && revenue > 0 ? (cost / revenue) : null;
-    const revenuePerHead = hasRevenue && latest.count > 0 ? (revenue / latest.count) : null;
-    return { label: dept.label, month: latest.label, headcount: latest.count, cost, mapping, revenue, hasRevenue, margin, marginPct, costRatio, revenuePerHead };
+    const revenuePerHead = hasRevenue && d.headcount > 0 ? (revenue / d.headcount) : null;
+    return { label: d.label, month: d.month, headcount: d.headcount, cost, costInr, mapping, revenue, hasRevenue, margin, marginPct, costRatio, revenuePerHead };
   }).sort((a,b) => b.cost - a.cost);
 
   lastHrCostPerfRows = rows.map(r => ({
-    Department: r.label, Month: r.month, Headcount: r.headcount, SalaryCost: r.cost,
+    Department: r.label, Month: r.month, Headcount: r.headcount, SalaryCostINR: r.costInr,
     Revenue: r.hasRevenue ? r.revenue : '', Margin: r.hasRevenue ? r.margin : '',
     MarginPct: r.hasRevenue && r.marginPct !== null ? r.marginPct.toFixed(1) + '%' : '',
     CostToRevenueRatio: r.costRatio !== null ? r.costRatio.toFixed(2) : '',
@@ -1413,6 +1455,28 @@ function renderHrCostPerf(){
   const latestMonthLabel = rawHrCostRows[0] && rawHrCostRows[0].months.length ? rawHrCostRows[0].months[rawHrCostRows[0].months.length - 1].label : '';
   if (noteWrap) noteWrap.textContent = latestMonthLabel ? `Showing ${latestMonthLabel} — the most recent month in the cost sheet.` : '';
 
+  // ---- Chart: Cost vs Revenue, only for departments with a mapped revenue source ----
+  // (support functions like HR/Finance/Legal have no revenue of their own — showing them
+  // here as a $0 bar would misread as underperformance rather than "not applicable".)
+  const chartRows = rows.filter(r => r.hasRevenue).sort((a,b) => b.revenue - a.revenue);
+  const chartWrapEl = document.getElementById('hrCostPnlChartWrap');
+  if (chartWrapEl) {
+    chartWrapEl.style.height = Math.max(220, chartRows.length * 40 + 50) + 'px';
+    const ctx = document.getElementById('chartHrCostPnl').getContext('2d');
+    if (chartHrCostPnl) chartHrCostPnl.destroy();
+    chartHrCostPnl = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: chartRows.map(r => r.label.replace(/ - .*/, '')),
+        datasets: [
+          { label: 'Revenue', data: chartRows.map(r => r.revenue), backgroundColor: (c) => barGradient(c, '#A8E6C3', '#1E824C'), borderRadius: 5, maxBarThickness: 16, datalabels: datalabelConfig(false, '#1E824C') },
+          { label: 'Salary Cost', data: chartRows.map(r => r.cost), backgroundColor: (c) => barGradient(c, '#F5B7B1', '#C0392B'), borderRadius: 5, maxBarThickness: 16, datalabels: datalabelConfig(false, '#C0392B') }
+        ]
+      },
+      options: chartOptions(true, 'money')
+    });
+  }
+
   let html = `<table class="data-table"><thead><tr>
     <th>Department</th><th>Headcount</th><th>Salary Cost</th><th>Revenue</th><th>Margin</th><th>Margin %</th><th>Cost / ₹1 Revenue</th><th>Revenue / Head</th>
   </tr></thead><tbody>`;
@@ -1422,9 +1486,10 @@ function renderHrCostPerf(){
     const marginPctCell = (r.hasRevenue && r.marginPct !== null) ? r.marginPct.toFixed(1) + '%' : '—';
     const ratioCell = r.costRatio !== null ? '₹' + r.costRatio.toFixed(2) : '—';
     const perHeadCell = r.revenuePerHead !== null ? fmtCurrencyFull(r.revenuePerHead) : '—';
-    const flag = (r.mapping.type === 'unmapped' || r.mapping.type === 'support')
-      ? `<br><span style="font-size:11px; color:var(--muted); font-weight:400;">${r.mapping.type === 'support' ? 'Support — no direct revenue' : '⚠ ' + (r.mapping.note || 'Not mapped to a revenue source')}</span>`
-      : '';
+    let flag = '';
+    if (r.mapping.type === 'support') flag = `<br><span style="font-size:11px; color:var(--muted); font-weight:400;">Support — no direct revenue</span>`;
+    else if (r.mapping.type === 'unmapped') flag = `<br><span style="font-size:11px; color:var(--muted); font-weight:400;">⚠ ${r.mapping.note || 'Not mapped to a revenue source'}</span>`;
+    else if (r.mapping.note) flag = `<br><span style="font-size:11px; color:var(--muted); font-weight:400;">ℹ ${r.mapping.note}</span>`;
     html += `<tr><td>${r.label}${flag}</td><td>${r.headcount}</td><td>${fmtCurrencyFull(r.cost)}</td><td>${revenueCell}</td><td>${marginCell}</td><td>${marginPctCell}</td><td>${ratioCell}</td><td>${perHeadCell}</td></tr>`;
   });
   const totalCost = rows.reduce((s,r) => s + r.cost, 0);
