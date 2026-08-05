@@ -1329,12 +1329,9 @@ function renderGoals(){
       console.warn('[Goal debug] Override FAILED — no HR row found with EmployeeCode', code, '. Sample EmployeeCode values:', rawHrRows.slice(0,3).map(r => r.EmployeeCode));
     }
   });
-  console.log('[Goal debug] resolveSalesRepIdentity("Arun Muwal"):', (() => {
-    const key = normNameKey('Arun Muwal');
-    const rec = salesFullNameIndex[key] || hrByFullName[key];
-    const canonicalName = rec ? rec.Name : (salesFirstNameIndex[key.split(/\s+/)[0]] || 'Arun Muwal');
-    return { rec, canonicalName, vp: walkUpToVp(hrByFullName, canonicalName) };
-  })());
+  console.log('[Goal debug] Actual Pipeline_Raw rows matching "arun":', rawPipelineRows
+    .filter(r => normName(r["LeadOwner"]) === 'arun')
+    .map(r => ({ LeadOwner: JSON.stringify(r["LeadOwner"]), OrderValue: r["OrderValue"], parsedVal: parseNum(r["OrderValue"]) })));
 
   function resolveSalesRepIdentity(repName){
     const key = normNameKey(repName);
