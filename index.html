@@ -1324,8 +1324,17 @@ function renderGoals(){
     if (correct) {
       hrByFullName[nameKey] = correct;
       if ((correct.Department || '').trim() === 'Sales') salesFullNameIndex[nameKey] = correct;
+      console.log('[Goal debug] Override applied for', nameKey, '->', correct);
+    } else {
+      console.warn('[Goal debug] Override FAILED — no HR row found with EmployeeCode', code, '. Sample EmployeeCode values:', rawHrRows.slice(0,3).map(r => r.EmployeeCode));
     }
   });
+  console.log('[Goal debug] resolveSalesRepIdentity("Arun Muwal"):', (() => {
+    const key = normNameKey('Arun Muwal');
+    const rec = salesFullNameIndex[key] || hrByFullName[key];
+    const canonicalName = rec ? rec.Name : (salesFirstNameIndex[key.split(/\s+/)[0]] || 'Arun Muwal');
+    return { rec, canonicalName, vp: walkUpToVp(hrByFullName, canonicalName) };
+  })());
 
   function resolveSalesRepIdentity(repName){
     const key = normNameKey(repName);
