@@ -238,6 +238,7 @@
   .status-fresh{ background:var(--green-pill-bg); color:var(--green-pill-text); }
   .status-aging{ background:var(--amber-pill-bg); color:var(--amber-pill-text); }
   .status-stale{ background:var(--red-pill-bg); color:var(--red-pill-text); }
+  .status-unknown{ background:#EEF0F3; color:var(--muted); }
 
   ::selection{ background:var(--blue); color:#fff; }
 
@@ -339,7 +340,7 @@
         <div class="kpi" style="--accent:var(--orange); cursor:pointer;" onclick="goToSalesPipeline()">
           <div class="kpi-label">Pipeline (Sales)</div>
           <div class="kpi-value" id="kpiGoalPipeline">—</div>
-          <div class="kpi-sub">Open opportunities, sales team only — click to view →</div>
+          <div class="kpi-sub" id="kpiGoalPipelineSub">Open opportunities, sales team only — click to view →</div>
         </div>
         <div class="kpi" style="--accent:var(--red); cursor:pointer;" onclick="goToDeliveryProjection()">
           <div class="kpi-label">Delivery Receipt Projection</div>
@@ -1288,7 +1289,7 @@ function walkUpToVp(hrByKey, fullName, maxHops){
 function renderGoals(){
   // ---- Build HR lookup indexes ----
   const NON_REVENUE_VP_DEPARTMENTS = ['HR', 'IT & DevOps', 'Finance', 'Legal', 'Admin', 'Management'];
-  const REVENUE_DEPARTMENTS = new Set(['Sales', 'DeFI', 'CeFI', 'Blockchain', 'PlaySphere – Gaming & Metaverse, UI/UX', 'Helium Wars', 'ASB', 'AI', 'Instanodes', 'Marketing as a Service', 'Growth', 'Govt Wing', 'Technology & Digital Operations']);
+  const REVENUE_DEPARTMENTS = new Set(['Sales', 'DeFI', 'CeFI', 'Blockchain', 'PlaySphere – Gaming & Metaverse, UI/UX', 'Helium Wars', 'ASB', 'AI', 'Instanodes', 'Marketing as a Service', 'Growth', 'Govt. & Wing (EduBlock Pro)', 'Technology & Digital Operations']);
   function isRevenueDept(dept){ return REVENUE_DEPARTMENTS.has((dept||'').trim()); }
 
   const hrByFullName = {};
@@ -1324,14 +1325,10 @@ function renderGoals(){
     if (correct) {
       hrByFullName[nameKey] = correct;
       if ((correct.Department || '').trim() === 'Sales') salesFullNameIndex[nameKey] = correct;
-      console.log('[Goal debug] Override applied for', nameKey, '->', correct);
     } else {
-      console.warn('[Goal debug] Override FAILED — no HR row found with EmployeeCode', code, '. Sample EmployeeCode values:', rawHrRows.slice(0,3).map(r => r.EmployeeCode));
+      console.warn('[Goal] Name override FAILED — no HR row found with EmployeeCode', code, 'for', nameKey);
     }
   });
-  console.log('[Goal debug] Actual Pipeline_Raw rows matching "arun":', rawPipelineRows
-    .filter(r => normName(r["LeadOwner"]) === 'arun')
-    .map(r => ({ LeadOwner: JSON.stringify(r["LeadOwner"]), OrderValue: r["OrderValue"], parsedVal: parseNum(r["OrderValue"]) })));
 
   function resolveSalesRepIdentity(repName){
     const key = normNameKey(repName);
@@ -1380,16 +1377,19 @@ function renderGoals(){
       else if (receipt) unmappedReceipt += receipt;
     }
   });
+  let totalCompanyPipeline = 0, unmappedPipeline = 0;
   rawPipelineRows.forEach(row => {
     const lo = (row["LeadOwner"] || "").trim();
     if (!lo) return;
     const val = parseNum(row["OrderValue"]);
+    totalCompanyPipeline += val;
     const { canonicalName, vp } = resolveSalesRepIdentity(lo);
     if (vp && val) addMember(vp, canonicalName, 0, val, 'sales');
+    else if (val) unmappedPipeline += val;
   });
 
   const totalAchievedCompanyWide = totalCompanyBooking + totalCompanyReceipt;
-  const totalUnmapped = unmappedBooking + unmappedReceipt;
+  const totalUnmapped = unmappedBooking + unmappedReceipt + unmappedPipeline;
 
   // ---- Targets: from VP_Targets sheet, defaulting to 0 if not configured ----
   const targetByVp = {};
@@ -1416,7 +1416,10 @@ function renderGoals(){
   // ---- Top KPIs ----
   const totalGoalUsd = TOP_LINE_GOAL_INR / exchangeRate;
   const totalAchieved = totalCompanyReceipt; // Achieved = Total Receipts collected in FY26-27, per CEO's definition
-  const totalPipeline = pipelineVals.reduce((a,b)=>a+b,0);
+  // Use the true company-wide pipeline total (mapped + unmapped) here so this tile always
+  // agrees with the Sales tab's own Pipeline KPI, since this tile links straight to it.
+  // The VP-by-VP chart below still only plots the portion that resolved to a VP.
+  const totalPipeline = totalCompanyPipeline;
   const deliveryProjectionUsd = Object.values(lastEwmsByHead).reduce((s,h) => s + (h.pending || 0), 0);
 
   document.getElementById('kpiGoalTarget').textContent = fmtCurrencyShort(totalGoalUsd);
@@ -1424,6 +1427,8 @@ function renderGoals(){
   document.getElementById('kpiGoalAttainment').textContent = (totalGoalUsd > 0 ? (totalAchieved/totalGoalUsd*100).toFixed(1) + '%' : '0%')
     + (unmappedReceipt > 0 ? ` of goal · ${fmtCurrencyShort(unmappedReceipt)} in receipts not yet mapped to a VP` : ' of goal');
   document.getElementById('kpiGoalPipeline').textContent = fmtCurrencyShort(totalPipeline);
+  document.getElementById('kpiGoalPipelineSub').textContent = 'Open opportunities, sales team only — click to view →'
+    + (unmappedPipeline > 0 ? ` (${fmtCurrencyShort(unmappedPipeline)} not yet mapped to a VP in the chart below)` : '');
   document.getElementById('kpiGoalDeliveryProjection').textContent = fmtCurrencyShort(deliveryProjectionUsd);
 
   // ---- Chart ----
@@ -2025,10 +2030,12 @@ function renderPipelineSection(pipelineRows){
   const withAge = pipelineRows.map(r => {
     const created = r["CreatedOn"] ? new Date(r["CreatedOn"]) : null;
     const ageDays = created ? Math.floor((now - created) / 86400000) : null;
-    let status = 'fresh';
+    // No CreatedOn date logged is NOT the same as verified-recent — don't default to "Fresh".
+    let status = 'unknown';
     if (ageDays !== null) {
       if (ageDays > 180) status = 'stale';
       else if (ageDays > 90) status = 'aging';
+      else status = 'fresh';
     }
     return {
       owner: (r["LeadOwner"] || "Unassigned").trim() || "Unassigned",
@@ -2075,6 +2082,7 @@ function renderPipelineSection(pipelineRows){
   const statusPill = (s) => {
     if (s === 'stale') return '<span class="status-pill status-stale">Stale</span>';
     if (s === 'aging') return '<span class="status-pill status-aging">Aging</span>';
+    if (s === 'unknown') return '<span class="status-pill status-unknown">No date</span>';
     return '<span class="status-pill status-fresh">Fresh</span>';
   };
 
