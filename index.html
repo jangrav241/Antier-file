@@ -1299,11 +1299,19 @@ function renderGoals(){
   // ---- Build HR lookup indexes ----
   const NON_REVENUE_VP_DEPARTMENTS = ['HR', 'IT & DevOps', 'Finance', 'Legal', 'Admin', 'Management'];
   const REVENUE_DEPARTMENTS = new Set(['Sales', 'DeFI', 'CeFI', 'Blockchain', 'PlaySphere – Gaming & Metaverse, UI/UX', 'Helium Wars', 'ASB', 'AI', 'Instanodes', 'Marketing as a Service', 'Growth', 'Govt. & Wing (EduBlock Pro)', 'Technology & Digital Operations']);
-  function isRevenueDept(dept){ return REVENUE_DEPARTMENTS.has((dept||'').trim()); }
+  // HR's Department column labels every sales rep by their VP's sub-team, e.g.
+  // "Sales - Gaurav Sahni", "Sales - Karan Bhai" — never the bare word "Sales".
+  // Match on the "Sales" prefix rather than exact equality, or every rep in
+  // every VP's team fails this check and their bookings never resolve.
+  function isSalesDept(dept){ return /^sales\b/i.test((dept||'').trim()); }
+  function isRevenueDept(dept){
+    const d = (dept||'').trim();
+    return isSalesDept(d) || REVENUE_DEPARTMENTS.has(d);
+  }
 
   const hrByFullName = {};
   const salesFirstNameIndex = {};
-  const salesFullNameIndex = {}; // exact full name, scoped to Sales dept only — avoids any cross-department name collision
+  const salesFullNameIndex = {}; // exact full name, scoped to any Sales sub-team — avoids cross-department name collision
   rawHrRows.forEach(r => {
     const name = (r.Name || '').trim();
     if (!name) return;
@@ -1318,7 +1326,7 @@ function renderGoals(){
         || (isRevenueDept(r.Department) && !isRevenueDept(existing.Department))) {
       hrByFullName[key] = r;
     }
-    if ((r.Department || '').trim() === 'Sales') {
+    if (isSalesDept(r.Department)) {
       const first = name.split(/\s+/)[0].toLowerCase();
       if (!salesFirstNameIndex[first]) salesFirstNameIndex[first] = name;
       salesFullNameIndex[key] = r;
@@ -1333,7 +1341,7 @@ function renderGoals(){
     const correct = rawHrRows.find(r => (r.EmployeeCode || '').trim() === code);
     if (correct) {
       hrByFullName[nameKey] = correct;
-      if ((correct.Department || '').trim() === 'Sales') salesFullNameIndex[nameKey] = correct;
+      if (isSalesDept(correct.Department)) salesFullNameIndex[nameKey] = correct;
     } else {
       console.warn('[Goal] Name override FAILED — no HR row found with EmployeeCode', code, 'for', nameKey);
     }
