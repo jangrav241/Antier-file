@@ -610,14 +610,48 @@
 
     </div>
 
-    <!-- ============ BANK (TREASURY) — placeholder ============ -->
+    <!-- ============ BANK (TREASURY) ============ -->
     <div id="bankDashboardView" style="display:none;">
-      <div class="section">
+      <div id="treasuryPlaceholder" class="section" style="display:none;">
         <div class="section-head">
           <div><span class="section-title">Bank (Treasury)</span></div>
         </div>
         <div class="placeholder-card">
-          Not connected yet. Tell me what to pull in here — e.g. consolidated cash by entity/bank account, inflows vs outflows, runway — and which source has it (bank feed, accounting system, or a manual Google Sheet), and I'll wire it up the same way as Sales and Receipts.
+          Couldn't find the "Financial Position" block in the department cost sheet — it may have moved or been renamed. Let me know if the source changed.
+        </div>
+      </div>
+
+      <div id="treasuryContent" style="display:none;">
+        <div class="kpi-row" style="margin-bottom:24px;">
+          <div class="kpi" style="--accent:var(--blue)">
+            <div class="kpi-label">Total Liquidity</div>
+            <div class="kpi-value" id="kpiTreasuryTotal">—</div>
+            <div class="kpi-sub" id="kpiTreasuryAsOf">Bank + Investments − Overdraft used</div>
+          </div>
+          <div class="kpi" style="--accent:var(--teal)">
+            <div class="kpi-label">Bank Balances</div>
+            <div class="kpi-value" id="kpiTreasuryBank">—</div>
+            <div class="kpi-sub">Indian + Dubai accounts, combined</div>
+          </div>
+          <div class="kpi" style="--accent:var(--orange)">
+            <div class="kpi-label">Investments</div>
+            <div class="kpi-value" id="kpiTreasuryInvestments">—</div>
+            <div class="kpi-sub">Mutual Funds + FDR + PMS Funds</div>
+          </div>
+          <div class="kpi" style="--accent:var(--red)">
+            <div class="kpi-label">Overdraft Used</div>
+            <div class="kpi-value" id="kpiTreasuryOverdraft">—</div>
+            <div class="kpi-sub">Drawn against available credit</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-head">
+            <div><span class="section-title">Financial Position — Breakdown</span><span class="live-pill">Live</span></div>
+          </div>
+          <div class="section-desc">Manually maintained snapshot from the same sheet as Department Salary Cost — not a live bank feed, so it only updates when that sheet is updated.</div>
+          <div id="treasuryTableWrap" class="chart-scroll"></div>
+          <div class="section-export"><button class="export-mini" onclick="downloadCsv('treasury_position.csv', lastTreasuryRows)">⬇ Export CSV</button></div>
         </div>
       </div>
     </div>
@@ -678,6 +712,20 @@
         <div class="section-desc">Employees with a Resign Start Date in the last 90 days, most recent first.</div>
         <div id="hrResignedTableWrap" class="chart-scroll"></div>
         <div class="section-export"><button class="export-mini" onclick="downloadCsv('recent_resignations.csv', lastHrResignedRows)">⬇ Export CSV</button></div>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Department P&amp;L — Cost vs Revenue</span><span class="live-pill">Live</span></div>
+        </div>
+        <div class="section-desc">
+          Salary cost by department against the revenue it generates — Receipts collected for delivery verticals, Booking value for Sales.
+          Cost / ₹1 Revenue is how much it costs to generate one rupee (lower is better); Revenue / Head is a rough productivity gauge.
+          Support functions (HR, Finance, Legal, IT, Admin, Management) have no revenue line of their own, so their margin is left blank rather than shown as a loss.
+          <span id="hrCostPerfMonthNote" style="display:block; margin-top:4px; font-style:italic;"></span>
+        </div>
+        <div id="hrCostPerfTableWrap" class="chart-scroll"></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('department_pnl.csv', lastHrCostPerfRows)">⬇ Export CSV</button></div>
       </div>
 
     </div>
@@ -763,12 +811,49 @@ let liUserFilter = 'All', liMonthFilter = 'All', liDateFrom = '', liDateTo = '',
 const HR_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRm-yObrkAiOFp3L_MfVFJKlq6Gv86Mc-n94RfyzetrvkCYj0PY9yikw7NA7UNPPlbPfN4NmPNbSxvz/pub?gid=52764210&single=true&output=csv";
 let rawHrRows = [];
 
+// HR — department-wise headcount & salary cost (manually maintained sheet, multi-table
+// layout: dept/salary block first, then a separate ASB turnover block, bank "Financial
+// Position" block, and marketing spend block on the same tab — we only parse the first).
+const HR_COST_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ0Fo90QrjB5a25SY-YgkaDcO7k81VrDIVNlv_DP7GxIQ2xUYWupniTuM3u5PnE1hpD1dbwV1lYzNIn/pub?gid=0&single=true&output=csv";
+let rawHrCostRows = []; // [{ label, months: [{label, count, salary}, ...] }]
+let lastHrCostPerfRows = [];
+let rawFinancialPosition = null; // { asOfDate, items: [{label, valueCr}], total }
+let lastTreasuryRows = [];
+// The cost sheet's department labels don't match canonical head names 1:1 — map the
+// exact raw labels (trimmed, as they appear in the sheet) to a canonical identity here.
+// type: 'delivery' joins to Receipts by that head; 'sales_vp' joins to that VP's Booking
+// (Achieved) from the Goal tab; 'unmapped'/'support' get cost shown with no revenue join.
+const HR_COST_LABEL_MAP = {
+  'Tech Cefi - Gagandeep Singh': { canonical: 'Gagan', type: 'delivery' },
+  'Tech Defi - Karan Bhai': { canonical: 'Karan Bhai', type: 'delivery' },
+  'Blockchain - Karan Chopra': { canonical: 'Karan Chopra', type: 'delivery' },
+  'Govt. & Wing Projects - Vivek Aggarwal': { canonical: 'Vivek', type: 'delivery' },
+  'Sales - Gaurav Sahni': { canonical: 'Gaurav Sahni', type: 'sales_vp' },
+  'Gaming & Metaverse - Swati Rana': { canonical: 'Swati', type: 'delivery' },
+  'Hellium Wars - Danesh': { canonical: 'Danesh', type: 'delivery' },
+  'Marketing As A Service - Dev Junas': { canonical: 'Devender', type: 'delivery' },
+  'Tech AI - Nikhil Uppal': { canonical: 'Nikhil', type: 'delivery' },
+  'Technology & Digital Operations - Deepak Sharma': { canonical: 'Deepak', type: 'unmapped', note: "Deepak's Receipts figure covers ASB + Tech & Digital Ops combined, but this sheet splits ASB's cost under \"Gurinder Singh\" instead — pairing this cost line alone with his combined revenue would overstate margin. Needs reconciliation." },
+  'Gurinder Singh - ASB': { canonical: null, type: 'unmapped', note: 'ASB revenue is currently attributed to Deepak in Bookings/Receipts, not Gurinder Singh. Confirm who should own this vertical\'s P&L before joining.' },
+  'Growth - Nishant Mitra': { canonical: 'Nishant', type: 'delivery' },
+  'InstaNode - Hardeep Singh': { canonical: 'Hardeep', type: 'delivery' },
+  'Marketing - Dev Junas': { canonical: null, type: 'support', note: 'General marketing overhead — no distinct revenue line in Bookings/Receipts (separate from "Marketing as a Service").' },
+  'Pre Sales - Ranier': { canonical: null, type: 'support', note: 'Supports the Sales team; no revenue of its own.' },
+  'HR - Govind Saini': { canonical: null, type: 'support' },
+  'Legal - Gaayan Sethi': { canonical: null, type: 'support' },
+  'Finance - Ashish Pareek': { canonical: null, type: 'support' },
+  'IT/DEVOPS - Jupinder Singh': { canonical: null, type: 'support' },
+  'Admin - Jagdeep Singh': { canonical: null, type: 'support' },
+  'Management': { canonical: null, type: 'support' }
+};
+
 // FY26-27 Top-Line Goal — ₹140 Cr, VP-wise bifurcation
 const TOP_LINE_GOAL_INR = 1400000000; // ₹140 Cr
 const VP_TARGETS_CSV = ""; // set once the VP_Targets sheet tab is published — see goalTargetsMissingCard
 let rawVpTargetRows = [];
 let selectedGoalVp = null;
 let lastGoalVpRows = [], lastGoalDrilldownRows = [];
+let lastVpAchievedByName = {}; // VP name -> achieved (Booking for sales VPs, Receipts for delivery VPs) — for joining cost-sheet rows to revenue
 let lastHrDeptRows = [], lastHrBenchedRows = [], lastHrResignedRows = [];
 let lastLinkedinChartRows = [], lastLinkedinTableRows = [], lastLinkedinIndustryRows = [];
 
@@ -963,6 +1048,7 @@ function reRenderAll(){
   if (rawEwmsRows.length) renderEwms(rawEwmsRows);
   if (rawPipelineRows.length) renderPipelineSection(rawPipelineRows);
   tryRenderGoals();
+  if (rawFinancialPosition) renderBankTreasury();
 }
 
 // ---------- Load ----------
@@ -994,6 +1080,7 @@ async function loadAll(){
   loadLinkedinOutbound();
   loadHrData();
   loadVpTargets();
+  loadHrCost();
 }
 
 function buildFilterTabs(bookingRows){
@@ -1173,6 +1260,179 @@ async function loadHrData(){
   } catch (err) {
     console.error('HR data fetch failed:', err);
   }
+}
+
+// The cost sheet is a raw multi-table print export, not a clean single table — fetch it
+// unparsed (no header:true) and pull out only the department salary/headcount block at
+// the top. Month columns are detected dynamically ("Apr-26" style headers, each followed
+// by a Count/Salary pair) so this keeps working as new months get appended to the sheet.
+async function fetchRawCsvRows(url){
+  const bustedUrl = url + (url.includes('?') ? '&' : '?') + '_cb=' + Date.now();
+  const response = await fetch(bustedUrl, { method: 'GET', mode: 'cors', cache: 'no-store' });
+  if (!response.ok) throw new Error(`HTTP ${response.status} fetching ${url}`);
+  const text = await response.text();
+  return Papa.parse(text, { header: false, skipEmptyLines: false }).data;
+}
+
+function parseHrCostSheet(grid){
+  if (!grid || grid.length < 3) return [];
+  const headerRow = grid[0] || [];
+  const monthCols = [];
+  const monthPattern = /^[A-Za-z]{3}-\d{2}$/;
+  let i = 1;
+  while (i < headerRow.length && monthPattern.test((headerRow[i] || '').trim())) {
+    monthCols.push({ label: headerRow[i].trim(), countCol: i, salaryCol: i + 1 });
+    i += 2;
+  }
+  if (!monthCols.length) return [];
+
+  const out = [];
+  for (let r = 2; r < grid.length; r++) {
+    const row = grid[r];
+    if (!row) continue;
+    const label = (row[0] || '').trim();
+    if (!label || label.toLowerCase() === 'total') break; // stop at the Total row / blank separator before the next table block
+    const months = monthCols.map(mc => ({
+      label: mc.label,
+      count: parseNum(row[mc.countCol]),
+      salary: parseNum(row[mc.salaryCol])
+    }));
+    out.push({ label, months });
+  }
+  return out;
+}
+
+// The same sheet also has a "Financial Position as on <date>" block further down —
+// bank balances, overdraft, and investments — parsed from the same raw grid.
+// Values in this block are already in ₹ Crore (not raw rupees like the salary block).
+function parseFinancialPositionBlock(grid){
+  const idx = grid.findIndex(row => row && (row[0] || '').trim().toLowerCase().startsWith('financial position'));
+  if (idx === -1) return null;
+  const asOfDate = (grid[idx][1] || '').trim();
+  const items = [];
+  let total = null;
+  for (let r = idx + 1; r < grid.length; r++) {
+    const row = grid[r];
+    if (!row) break;
+    const label = (row[0] || '').trim();
+    if (!label) break;
+    const valueCr = parseNum(row[1]);
+    if (label.toLowerCase() === 'total') { total = valueCr; break; }
+    items.push({ label, valueCr });
+  }
+  return { asOfDate, items, total };
+}
+
+function crToUsdAmount(cr){ return (cr * 10000000) / exchangeRate; }
+
+function renderBankTreasury(){
+  const placeholder = document.getElementById('treasuryPlaceholder');
+  const content = document.getElementById('treasuryContent');
+  if (!placeholder || !content) return;
+  if (!rawFinancialPosition) {
+    placeholder.style.display = 'block';
+    content.style.display = 'none';
+    return;
+  }
+  placeholder.style.display = 'none';
+  content.style.display = 'block';
+
+  const byLabel = {};
+  rawFinancialPosition.items.forEach(it => { byLabel[it.label] = it.valueCr; });
+  const bankCr = (byLabel['Indian Bank Balance'] || 0) + (byLabel['Dubai Bank Balance'] || 0);
+  const investmentsCr = (byLabel['Mutual Funds'] || 0) + (byLabel['Fixed Deposit (Credit Card)'] || 0) + (byLabel['Investor Funds FDR'] || 0) + (byLabel['PMS Funds'] || 0);
+  const overdraftCr = Math.abs(byLabel['Overdraft Limit Used'] || 0);
+  const totalCr = rawFinancialPosition.total !== null ? rawFinancialPosition.total : (bankCr + investmentsCr - overdraftCr);
+
+  document.getElementById('kpiTreasuryTotal').textContent = fmtCurrencyShort(crToUsdAmount(totalCr));
+  document.getElementById('kpiTreasuryAsOf').textContent = rawFinancialPosition.asOfDate ? `As of ${rawFinancialPosition.asOfDate} · Bank + Investments − Overdraft used` : 'Bank + Investments − Overdraft used';
+  document.getElementById('kpiTreasuryBank').textContent = fmtCurrencyShort(crToUsdAmount(bankCr));
+  document.getElementById('kpiTreasuryInvestments').textContent = fmtCurrencyShort(crToUsdAmount(investmentsCr));
+  document.getElementById('kpiTreasuryOverdraft').textContent = fmtCurrencyShort(crToUsdAmount(overdraftCr));
+
+  lastTreasuryRows = rawFinancialPosition.items.map(it => ({ Item: it.label, ValueINRCr: it.valueCr, ValueUSD: crToUsdAmount(it.valueCr) }));
+  if (rawFinancialPosition.total !== null) lastTreasuryRows.push({ Item: 'Total', ValueINRCr: rawFinancialPosition.total, ValueUSD: crToUsdAmount(rawFinancialPosition.total) });
+
+  let html = `<table class="data-table"><thead><tr><th>Item</th><th>₹ Cr</th><th>Value</th></tr></thead><tbody>`;
+  rawFinancialPosition.items.forEach(it => {
+    const isNegative = it.valueCr < 0;
+    html += `<tr><td>${it.label}</td><td>${isNegative ? '−' : ''}₹${Math.abs(it.valueCr).toFixed(2)} Cr</td><td>${isNegative ? '−' : ''}${fmtCurrencyFull(Math.abs(crToUsdAmount(it.valueCr)))}</td></tr>`;
+  });
+  if (rawFinancialPosition.total !== null) {
+    html += `<tr class="total-row"><td>Total</td><td>₹${rawFinancialPosition.total.toFixed(2)} Cr</td><td>${fmtCurrencyFull(crToUsdAmount(rawFinancialPosition.total))}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  document.getElementById('treasuryTableWrap').innerHTML = html;
+}
+
+async function loadHrCost(){
+  try {
+    const grid = await fetchRawCsvRows(HR_COST_CSV);
+    rawHrCostRows = parseHrCostSheet(grid);
+    tryRenderHrCostPerf();
+    rawFinancialPosition = parseFinancialPositionBlock(grid);
+    renderBankTreasury();
+  } catch (err) {
+    console.error('HR cost sheet fetch failed:', err);
+  }
+}
+
+function tryRenderHrCostPerf(){
+  if (rawHrCostRows.length) renderHrCostPerf();
+}
+
+function renderHrCostPerf(){
+  const wrap = document.getElementById('hrCostPerfTableWrap');
+  const noteWrap = document.getElementById('hrCostPerfMonthNote');
+  if (!wrap) return;
+
+  const rows = rawHrCostRows.map(dept => {
+    const latest = dept.months[dept.months.length - 1];
+    const mapping = HR_COST_LABEL_MAP[dept.label] || { canonical: null, type: 'unmapped', note: 'Not recognized — add this label to HR_COST_LABEL_MAP.' };
+    let revenue = null;
+    if (mapping.type === 'delivery' && mapping.canonical) revenue = lastReceiptByOwner[mapping.canonical] || 0;
+    else if (mapping.type === 'sales_vp' && mapping.canonical) revenue = lastVpAchievedByName[mapping.canonical];
+    const hasRevenue = revenue !== null && revenue !== undefined;
+    const cost = latest.salary;
+    const margin = hasRevenue ? revenue - cost : null;
+    const marginPct = hasRevenue && revenue > 0 ? (margin / revenue * 100) : null;
+    const costRatio = hasRevenue && revenue > 0 ? (cost / revenue) : null;
+    const revenuePerHead = hasRevenue && latest.count > 0 ? (revenue / latest.count) : null;
+    return { label: dept.label, month: latest.label, headcount: latest.count, cost, mapping, revenue, hasRevenue, margin, marginPct, costRatio, revenuePerHead };
+  }).sort((a,b) => b.cost - a.cost);
+
+  lastHrCostPerfRows = rows.map(r => ({
+    Department: r.label, Month: r.month, Headcount: r.headcount, SalaryCost: r.cost,
+    Revenue: r.hasRevenue ? r.revenue : '', Margin: r.hasRevenue ? r.margin : '',
+    MarginPct: r.hasRevenue && r.marginPct !== null ? r.marginPct.toFixed(1) + '%' : '',
+    CostToRevenueRatio: r.costRatio !== null ? r.costRatio.toFixed(2) : '',
+    RevenuePerHead: r.revenuePerHead !== null ? r.revenuePerHead : '',
+    Note: r.mapping.note || ''
+  }));
+
+  const latestMonthLabel = rawHrCostRows[0] && rawHrCostRows[0].months.length ? rawHrCostRows[0].months[rawHrCostRows[0].months.length - 1].label : '';
+  if (noteWrap) noteWrap.textContent = latestMonthLabel ? `Showing ${latestMonthLabel} — the most recent month in the cost sheet.` : '';
+
+  let html = `<table class="data-table"><thead><tr>
+    <th>Department</th><th>Headcount</th><th>Salary Cost</th><th>Revenue</th><th>Margin</th><th>Margin %</th><th>Cost / ₹1 Revenue</th><th>Revenue / Head</th>
+  </tr></thead><tbody>`;
+  rows.forEach(r => {
+    const revenueCell = r.hasRevenue ? fmtCurrencyFull(r.revenue) : '—';
+    const marginCell = r.hasRevenue ? fmtCurrencyFull(r.margin) : '—';
+    const marginPctCell = (r.hasRevenue && r.marginPct !== null) ? r.marginPct.toFixed(1) + '%' : '—';
+    const ratioCell = r.costRatio !== null ? '₹' + r.costRatio.toFixed(2) : '—';
+    const perHeadCell = r.revenuePerHead !== null ? fmtCurrencyFull(r.revenuePerHead) : '—';
+    const flag = (r.mapping.type === 'unmapped' || r.mapping.type === 'support')
+      ? `<br><span style="font-size:11px; color:var(--muted); font-weight:400;">${r.mapping.type === 'support' ? 'Support — no direct revenue' : '⚠ ' + (r.mapping.note || 'Not mapped to a revenue source')}</span>`
+      : '';
+    html += `<tr><td>${r.label}${flag}</td><td>${r.headcount}</td><td>${fmtCurrencyFull(r.cost)}</td><td>${revenueCell}</td><td>${marginCell}</td><td>${marginPctCell}</td><td>${ratioCell}</td><td>${perHeadCell}</td></tr>`;
+  });
+  const totalCost = rows.reduce((s,r) => s + r.cost, 0);
+  const totalRevenue = rows.reduce((s,r) => s + (r.hasRevenue ? r.revenue : 0), 0);
+  const totalHeadcount = rows.reduce((s,r) => s + r.headcount, 0);
+  html += `<tr class="total-row"><td>Total</td><td>${totalHeadcount}</td><td>${fmtCurrencyFull(totalCost)}</td><td>${fmtCurrencyFull(totalRevenue)}</td><td>${fmtCurrencyFull(totalRevenue-totalCost)}</td><td></td><td></td><td></td></tr>`;
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
 }
 
 function renderHr(rows){
@@ -1487,6 +1747,10 @@ function renderGoals(){
   });
 
   if (selectedGoalVp && vpData[selectedGoalVp]) renderGoalDrilldown(vpData, selectedGoalVp);
+
+  lastVpAchievedByName = {};
+  allVps.forEach(v => { lastVpAchievedByName[v] = (vpData[v] ? vpData[v].achieved : 0); });
+  tryRenderHrCostPerf();
 }
 
 let lastGoalUnmappedRows = [];
