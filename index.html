@@ -357,7 +357,7 @@
             <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Pipeline
           </div>
         </div>
-        <div class="section-desc">Click any VP's bar to see their team-wise breakdown below. "Achieved" is Booking value for sales VPs and Receipts collected for delivery VPs.</div>
+        <div class="section-desc">Click any VP's bar to see their team-wise breakdown below. "Achieved" is Booking value for sales VPs and Receipts collected for delivery VPs. If a VP looks too low, check the "Not Yet Mapped to a VP" panel below the drilldown — their numbers may be sitting there instead.</div>
         <div class="chart-scroll"><div class="chart-wrap" id="goalVpChartWrap"><canvas id="chartGoalVp"></canvas></div></div>
         <div class="section-export"><button class="export-mini" onclick="downloadCsv('vp_goal_rollup.csv', lastGoalVpRows)">⬇ Export CSV</button></div>
       </div>
@@ -369,6 +369,15 @@
         <div class="section-desc">Individual contribution of each person reporting up to the selected VP.</div>
         <div id="goalDrilldownTableWrap" class="chart-scroll"></div>
         <div class="section-export"><button class="export-mini" onclick="downloadCsv('vp_team_breakdown.csv', lastGoalDrilldownRows)">⬇ Export CSV</button></div>
+      </div>
+
+      <div class="section" id="goalUnmappedSection" style="display:none;">
+        <div class="section-head">
+          <div><span class="section-title">Not Yet Mapped to a VP</span><span class="live-pill">Live</span></div>
+        </div>
+        <div class="section-desc">These names have booking, receipt, or pipeline value this FY but don't resolve to any VP through the HR reporting chain — this is why a VP can show $0 Achieved despite their team having real numbers. Usually caused by a name spelled differently here than in the HR sheet, or a broken/blank Team Lead link somewhere in the chain. Fix the name or the chain in the source sheet and it will fold into the right VP above on next refresh.</div>
+        <div id="goalUnmappedTableWrap" class="chart-scroll"></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('unmapped_to_vp.csv', lastGoalUnmappedRows)">⬇ Export CSV</button></div>
       </div>
 
     </div>
@@ -1359,6 +1368,20 @@ function renderGoals(){
   // matches the Sales tab's own numbers rather than silently undercounting.
   let totalCompanyBooking = 0, totalCompanyReceipt = 0, unmappedBooking = 0, unmappedReceipt = 0;
 
+  // Every rupee that fails to resolve to a VP is tracked here by whoever it was
+  // attributed to and why — this is what makes a VP showing $0 Achieved (despite
+  // having real bookings/receipts) diagnosable instead of silently invisible.
+  // Usual causes: the rep/head's name here doesn't exactly match their HR "Name"
+  // (typo, nickname, missing middle name), or their reporting chain's TeamLead
+  // field is blank/broken/circular before it reaches a VP-designated person.
+  const unmappedByName = {};
+  function trackUnmapped(name, value, kind){
+    const key = (name || '').trim() || '(blank name)';
+    if (!unmappedByName[key]) unmappedByName[key] = { value: 0, kinds: new Set() };
+    unmappedByName[key].value += value;
+    unmappedByName[key].kinds.add(kind);
+  }
+
   goalFyRows.forEach(row => {
     const sp = (row["Sales Person"] || "").trim();
     if (sp) {
@@ -1366,7 +1389,7 @@ function renderGoals(){
       totalCompanyBooking += booking;
       const { canonicalName, vp } = resolveSalesRepIdentity(sp);
       if (vp && booking) addMember(vp, canonicalName, booking, 0, 'sales');
-      else if (booking) unmappedBooking += booking;
+      else if (booking) { unmappedBooking += booking; trackUnmapped(canonicalName || sp, booking, 'Booking'); }
     }
     const owner = canonicalDeliveryHead(row["Project Owner"]);
     if (owner) {
@@ -1374,7 +1397,7 @@ function renderGoals(){
       totalCompanyReceipt += receipt;
       const vp = resolveVpForDeliveryHead(owner);
       if (vp && receipt) addMember(vp, owner, receipt, 0, 'delivery');
-      else if (receipt) unmappedReceipt += receipt;
+      else if (receipt) { unmappedReceipt += receipt; trackUnmapped(owner, receipt, 'Receipt'); }
     }
   });
   let totalCompanyPipeline = 0, unmappedPipeline = 0;
@@ -1385,11 +1408,12 @@ function renderGoals(){
     totalCompanyPipeline += val;
     const { canonicalName, vp } = resolveSalesRepIdentity(lo);
     if (vp && val) addMember(vp, canonicalName, 0, val, 'sales');
-    else if (val) unmappedPipeline += val;
+    else if (val) { unmappedPipeline += val; trackUnmapped(canonicalName || lo, val, 'Pipeline'); }
   });
 
   const totalAchievedCompanyWide = totalCompanyBooking + totalCompanyReceipt;
   const totalUnmapped = unmappedBooking + unmappedReceipt + unmappedPipeline;
+  renderGoalUnmappedSection(unmappedByName, totalUnmapped);
 
   // ---- Targets: from VP_Targets sheet, defaulting to 0 if not configured ----
   const targetByVp = {};
@@ -1455,6 +1479,30 @@ function renderGoals(){
   });
 
   if (selectedGoalVp && vpData[selectedGoalVp]) renderGoalDrilldown(vpData, selectedGoalVp);
+}
+
+let lastGoalUnmappedRows = [];
+function renderGoalUnmappedSection(unmappedByName, totalUnmapped){
+  const section = document.getElementById('goalUnmappedSection');
+  const wrap = document.getElementById('goalUnmappedTableWrap');
+  if (!section || !wrap) return;
+
+  const entries = Object.entries(unmappedByName).sort((a,b) => b[1].value - a[1].value);
+  if (!entries.length || totalUnmapped <= 0) {
+    section.style.display = 'none';
+    lastGoalUnmappedRows = [];
+    return;
+  }
+  section.style.display = 'block';
+  lastGoalUnmappedRows = entries.map(([name, d]) => ({ Name: name, Source: Array.from(d.kinds).join(' + '), Value: d.value }));
+
+  let html = `<table class="data-table"><thead><tr><th>Name (as it appears in the source sheet)</th><th>Source</th><th>Value</th></tr></thead><tbody>`;
+  entries.forEach(([name, d]) => {
+    html += `<tr><td>${name}</td><td>${Array.from(d.kinds).join(' + ')}</td><td>${fmtCurrencyFull(d.value)}</td></tr>`;
+  });
+  html += `<tr class="total-row"><td>Total unmapped</td><td></td><td>${fmtCurrencyFull(totalUnmapped)}</td></tr>`;
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
 }
 
 function renderGoalDrilldown(vpData, vpName){
