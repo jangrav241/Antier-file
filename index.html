@@ -725,7 +725,8 @@
         <div class="section-desc">
           Salary cost by department against the revenue it generates — Receipts collected for delivery verticals, Booking value for Sales.
           Cost / ₹1 Revenue is how much it costs to generate one rupee (lower is better); Revenue / Head is a rough productivity gauge.
-          Support functions (HR, Finance, Legal, IT, Admin, Management) have no revenue line of their own, so their margin is left blank rather than shown as a loss.
+          Support functions (HR, Finance, Legal, IT, Admin) have no revenue line of their own, so their margin is left blank rather than shown as a loss.
+          Management's revenue is Booking recorded directly under the literal Sales Person "Management" (deals not attributed to an individual rep).
           <span id="hrCostPerfMonthNote" style="display:block; margin-top:4px; font-style:italic;"></span>
         </div>
         <div class="chart-scroll"><div class="chart-wrap" id="hrCostPnlChartWrap"><canvas id="chartHrCostPnl"></canvas></div></div>
@@ -807,7 +808,10 @@ const LINKEDIN_SOURCES = [
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vS-5AbrxjFparn5OF97GFGR-hezeZssj8eL8-oVBXJCNdq-Q-XPCZXx2C3Kq6wcfBGHlwo2AYI3Utqi/pub?gid=1998393172&single=true&output=csv",
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vT6tfWISmH5vEhwZmzjW2d-M0zmjorfjdmxRu1KoOSf7PeAnsSD7DmwUshuzYgLx6qnekO4y2UBcHp4/pub?gid=1423236070&single=true&output=csv",
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSrvormwe-c8KIjBqTelE71UCTpThfFsOWXoInXp5iynHlVme3kCpLp-W5pvlLD_OGmh1BzXNFEG0f3/pub?gid=526314845&single=true&output=csv",
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQcSG13vTvbTQJP2nj3ejUTxMwMcj-Iei6mLu7qmExkfDkH-uL7pCBq6xTT-T-ahcsB6rfLAVyU4gts/pub?gid=1301002743&single=true&output=csv"
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQcSG13vTvbTQJP2nj3ejUTxMwMcj-Iei6mLu7qmExkfDkH-uL7pCBq6xTT-T-ahcsB6rfLAVyU4gts/pub?gid=1301002743&single=true&output=csv",
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQv0c-L8t3pari3O4OZ6fTR7jfBWZWTl_y6uQ7jINYpSKOgxRTqUd_uSJtZ7XNJA4Sfzn_9pSaFRfv7/pub?gid=43972979&single=true&output=csv",
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vTSMhzXqjxbB1cpvVLzyldmOabKZJKiEA1TgfozABqQgHD7ol9ngUwjQR1rjDEjgTABxHwBGraO4wzB/pub?gid=1569258702&single=true&output=csv",
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQUVTwyUOOnJyZ-jtYQIbMrC4fZ7z-zR7C6kC7WmCMPo8sHF646n6kDSnsKPqPS8mvJn0EkzoFzBD5L/pub?gid=43972979&single=true&output=csv"
 ];
 let rawLinkedinRows = [];
 let liUserFilter = 'All', liMonthFilter = 'All', liDateFrom = '', liDateTo = '', liStatusFilter = 'All';
@@ -849,7 +853,7 @@ const HR_COST_LABEL_MAP = {
   'Finance - Ashish Pareek': { canonical: null, type: 'support' },
   'IT/DEVOPS - Jupinder Singh': { canonical: null, type: 'support' },
   'Admin - Jagdeep Singh': { canonical: null, type: 'support' },
-  'Management': { canonical: null, type: 'support' }
+  'Management': { canonical: 'Management', type: 'literal_sales_person', note: 'Bookings recorded under the literal Sales Person "Management" (not tied to any individual rep) — attributed here directly rather than through a VP chain.' }
 };
 
 // Friendlier display labels for merged rows, where the raw cost-sheet labels don't read
@@ -866,6 +870,30 @@ let rawVpTargetRows = [];
 let selectedGoalVp = null;
 let lastGoalVpRows = [], lastGoalDrilldownRows = [];
 let lastVpAchievedByName = {}; // VP name -> achieved (Booking for sales VPs, Receipts for delivery VPs) — for joining cost-sheet rows to revenue
+
+// Revenue matched to the SAME period the cost sheet covers (its most recent quarter),
+// independent of whatever Quarter/FY the person has toggled in the top filter bar —
+// otherwise Cost (a fixed historical quarter) could get compared against Revenue for
+// a completely different, currently-selected period.
+let lastCostPeriodReceiptByOwner = {};
+let lastCostPeriodVpAchieved = {};
+let lastCostPeriodLiteralSalesPerson = {};
+let lastCostPeriodLabel = '';
+
+// Maps a cost-sheet month label (e.g. "Apr-26") to the Quarter token + FY string used
+// elsewhere in this app (Apr-Jun = Q1, Jul-Sep = Q2, Oct-Dec = Q3, Jan-Mar = Q4 of the
+// FY that started the previous April).
+const MONTH_TO_FY_QUARTER = { jan:'Q4', feb:'Q4', mar:'Q4', apr:'Q1', may:'Q1', jun:'Q1', jul:'Q2', aug:'Q2', sep:'Q2', oct:'Q3', nov:'Q3', dec:'Q3' };
+function monthLabelToQuarterFy(label){
+  const parts = (label || '').split('-');
+  if (parts.length !== 2) return null;
+  const monKey = parts[0].trim().toLowerCase();
+  const quarter = MONTH_TO_FY_QUARTER[monKey];
+  if (!quarter) return null;
+  let fyStartYear = 2000 + parseInt(parts[1], 10);
+  if (['jan','feb','mar'].includes(monKey)) fyStartYear -= 1;
+  return { quarter, fy: `${fyStartYear}-${fyStartYear + 1}` };
+}
 let lastHrDeptRows = [], lastHrBenchedRows = [], lastHrResignedRows = [];
 let lastLinkedinChartRows = [], lastLinkedinTableRows = [], lastLinkedinIndustryRows = [];
 
@@ -1406,29 +1434,34 @@ function renderHrCostPerf(){
   const grouped = {};
   const passthrough = [];
   rawHrCostRows.forEach(dept => {
-    const latest = dept.months[dept.months.length - 1];
+    // Sum cost & headcount across every month in the sheet (currently one full quarter),
+    // matched to Revenue for that SAME quarter below — comparing a single month's cost
+    // against a whole quarter's revenue (or vice versa) would understate/overstate margin.
+    const totalSalary = dept.months.reduce((s, m) => s + m.salary, 0);
+    const latestHeadcount = dept.months[dept.months.length - 1].count;
     const mapping = HR_COST_LABEL_MAP[dept.label] || { canonical: null, type: 'unmapped', note: 'Not recognized — add this label to HR_COST_LABEL_MAP.' };
-    if (mapping.canonical && (mapping.type === 'delivery' || mapping.type === 'sales_vp')) {
+    if (mapping.canonical && (mapping.type === 'delivery' || mapping.type === 'sales_vp' || mapping.type === 'literal_sales_person')) {
       const key = mapping.type + ':' + mapping.canonical;
-      if (!grouped[key]) grouped[key] = { canonical: mapping.canonical, type: mapping.type, note: mapping.note, labels: [], month: latest.label, headcount: 0, costInr: 0 };
+      if (!grouped[key]) grouped[key] = { canonical: mapping.canonical, type: mapping.type, note: mapping.note, labels: [], headcount: 0, costInr: 0 };
       grouped[key].labels.push(dept.label);
-      grouped[key].headcount += latest.count;
-      grouped[key].costInr += latest.salary;
+      grouped[key].headcount += latestHeadcount;
+      grouped[key].costInr += totalSalary;
     } else {
-      passthrough.push({ label: dept.label, month: latest.label, headcount: latest.count, costInr: latest.salary, mapping });
+      passthrough.push({ label: dept.label, headcount: latestHeadcount, costInr: totalSalary, mapping });
     }
   });
   const mergedRows = Object.values(grouped).map(g => ({
     label: MERGED_ROW_LABEL_OVERRIDES[g.canonical + ':' + g.type] || (g.labels.length > 1 ? `${g.canonical} (${g.labels.join(' + ')})` : g.labels[0]),
-    month: g.month, headcount: g.headcount, costInr: g.costInr,
+    headcount: g.headcount, costInr: g.costInr,
     mapping: { canonical: g.canonical, type: g.type, note: g.note }
   }));
 
   const rows = [...mergedRows, ...passthrough].map(d => {
     const mapping = d.mapping;
     let revenue = null;
-    if (mapping.type === 'delivery' && mapping.canonical) revenue = lastReceiptByOwner[mapping.canonical] || 0;
-    else if (mapping.type === 'sales_vp' && mapping.canonical) revenue = lastVpAchievedByName[mapping.canonical];
+    if (mapping.type === 'delivery' && mapping.canonical) revenue = lastCostPeriodReceiptByOwner[mapping.canonical] || 0;
+    else if (mapping.type === 'sales_vp' && mapping.canonical) revenue = lastCostPeriodVpAchieved[mapping.canonical] || 0;
+    else if (mapping.type === 'literal_sales_person' && mapping.canonical) revenue = lastCostPeriodLiteralSalesPerson[mapping.canonical] || 0;
     const hasRevenue = revenue !== null && revenue !== undefined;
     // Salary Cost comes from the accounts sheet in raw INR rupees, while Revenue (Booking/
     // Receipts) is already in this app's internal USD-equivalent unit — convert cost to the
@@ -1440,11 +1473,11 @@ function renderHrCostPerf(){
     const marginPct = hasRevenue && revenue > 0 ? (margin / revenue * 100) : null;
     const costRatio = hasRevenue && revenue > 0 ? (cost / revenue) : null;
     const revenuePerHead = hasRevenue && d.headcount > 0 ? (revenue / d.headcount) : null;
-    return { label: d.label, month: d.month, headcount: d.headcount, cost, costInr, mapping, revenue, hasRevenue, margin, marginPct, costRatio, revenuePerHead };
+    return { label: d.label, headcount: d.headcount, cost, costInr, mapping, revenue, hasRevenue, margin, marginPct, costRatio, revenuePerHead };
   }).sort((a,b) => b.cost - a.cost);
 
   lastHrCostPerfRows = rows.map(r => ({
-    Department: r.label, Month: r.month, Headcount: r.headcount, SalaryCostINR: r.costInr,
+    Department: r.label, Period: lastCostPeriodLabel, Headcount: r.headcount, SalaryCostINR: r.costInr,
     Revenue: r.hasRevenue ? r.revenue : '', Margin: r.hasRevenue ? r.margin : '',
     MarginPct: r.hasRevenue && r.marginPct !== null ? r.marginPct.toFixed(1) + '%' : '',
     CostToRevenueRatio: r.costRatio !== null ? r.costRatio.toFixed(2) : '',
@@ -1452,8 +1485,7 @@ function renderHrCostPerf(){
     Note: r.mapping.note || ''
   }));
 
-  const latestMonthLabel = rawHrCostRows[0] && rawHrCostRows[0].months.length ? rawHrCostRows[0].months[rawHrCostRows[0].months.length - 1].label : '';
-  if (noteWrap) noteWrap.textContent = latestMonthLabel ? `Showing ${latestMonthLabel} — the most recent month in the cost sheet.` : '';
+  if (noteWrap) noteWrap.textContent = lastCostPeriodLabel ? `Showing ${lastCostPeriodLabel} — Salary Cost summed across every month in the cost sheet for this quarter, Revenue filtered to the same quarter.` : '';
 
   // ---- Chart: Cost vs Revenue, only for departments with a mapped revenue source ----
   // (support functions like HR/Finance/Legal have no revenue of their own — showing them
@@ -1477,8 +1509,13 @@ function renderHrCostPerf(){
     });
   }
 
+  const formulaCaption = (text) => `<br><span style="font-size:9px; color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">${text}</span>`;
   let html = `<table class="data-table"><thead><tr>
-    <th>Department</th><th>Headcount</th><th>Salary Cost</th><th>Revenue</th><th>Margin</th><th>Margin %</th><th>Cost / ₹1 Revenue</th><th>Revenue / Head</th>
+    <th>Department</th><th>Headcount</th><th>Salary Cost</th><th>Revenue</th>
+    <th>Margin${formulaCaption('Revenue − Cost')}</th>
+    <th>Margin %${formulaCaption('(Margin ÷ Revenue) × 100')}</th>
+    <th>Cost / ₹1 Revenue${formulaCaption('Cost ÷ Revenue')}</th>
+    <th>Revenue / Head${formulaCaption('Revenue ÷ Headcount')}</th>
   </tr></thead><tbody>`;
   rows.forEach(r => {
     const revenueCell = r.hasRevenue ? fmtCurrencyFull(r.revenue) : '—';
@@ -1661,7 +1698,18 @@ function renderGoals(){
   // Explicit overrides for known name collisions in the HR data — guarantees
   // the correct person by EmployeeCode regardless of any other heuristic.
   // Add more entries here as additional duplicates are found.
+  // Two separate override maps because the two indexes get hit by different lookups:
+  // FULL_NAME covers Booking rows that record someone's full name; FIRST_NAME covers
+  // rows that record just a first name (e.g. Pipeline's LeadOwner often does), which
+  // otherwise resolves via whichever same-first-name person happened to be encountered
+  // first in the raw HR sheet order — silently wrong when there's more than one.
   const KNOWN_NAME_OVERRIDE_EMPLOYEE_CODES = { 'arun muwal': 'ATR1169' };
+  const KNOWN_FIRST_NAME_OVERRIDE_EMPLOYEE_CODES = { 'arun': 'ATR1169' };
+  // Names known to be ambiguous across multiple different people in HR — reserved for
+  // cases confirmed to need forcing to "Not Yet Mapped" rather than a guessed VP. Empty
+  // for now; add entries here once a specific EmployeeCode collision is confirmed.
+  const KNOWN_AMBIGUOUS_NAMES = {};
+
   Object.entries(KNOWN_NAME_OVERRIDE_EMPLOYEE_CODES).forEach(([nameKey, code]) => {
     const correct = rawHrRows.find(r => (r.EmployeeCode || '').trim() === code);
     if (correct) {
@@ -1671,16 +1719,36 @@ function renderGoals(){
       console.warn('[Goal] Name override FAILED — no HR row found with EmployeeCode', code, 'for', nameKey);
     }
   });
+  Object.entries(KNOWN_FIRST_NAME_OVERRIDE_EMPLOYEE_CODES).forEach(([firstKey, code]) => {
+    const correct = rawHrRows.find(r => (r.EmployeeCode || '').trim() === code);
+    if (correct) salesFirstNameIndex[firstKey] = correct.Name;
+    else console.warn('[Goal] First-name override FAILED — no HR row found with EmployeeCode', code, 'for', firstKey);
+  });
 
   function resolveSalesRepIdentity(repName){
     const key = normNameKey(repName);
-    const rec = salesFullNameIndex[key] || hrByFullName[key];
-    const canonicalName = rec ? rec.Name : (salesFirstNameIndex[key.split(/\s+/)[0]] || repName);
+    if (KNOWN_AMBIGUOUS_NAMES[key]) return { canonicalName: repName, vp: null, ambiguousNote: KNOWN_AMBIGUOUS_NAMES[key] };
+    const firstKey = key.split(/\s+/)[0];
+    // Prefer a match resolved WITHIN the Sales org (exact full-name, then first-name)
+    // over a generic company-wide full-name match. A bare name like "Daljinder" or
+    // "Arun" can accidentally collide with an unrelated employee elsewhere in HR who
+    // happens to share the same literal Name field or first name — without this
+    // ordering, that accidental collision silently wins over the correct sales rep.
+    let rec = salesFullNameIndex[key];
+    if (!rec && salesFirstNameIndex[firstKey]) rec = hrByFullName[normNameKey(salesFirstNameIndex[firstKey])];
+    if (!rec) rec = hrByFullName[key];
+    const canonicalName = rec ? rec.Name : (salesFirstNameIndex[firstKey] || repName);
     return { canonicalName, vp: walkUpToVp(hrByFullName, canonicalName) };
   }
   function resolveVpForDeliveryHead(canonicalName){
-    const fullName = CANONICAL_HEAD_FULLNAME[canonicalName] || canonicalName;
-    return walkUpToVp(hrByFullName, fullName);
+    // Every entry in CANONICAL_DELIVERY_HEADS is, by definition, the head of their own
+    // vertical for this rollup — they don't need to satisfy the isVpDesignation() regex.
+    // Walking further up the chain looking for a literal "VP"/"Vice President" title was
+    // the bug: several heads carry titles like "Delivery Manager" or "Head of Neev Labs"
+    // that never match, and their own chain leads to a CEO/CTO title that doesn't match
+    // either — so resolution failed and their revenue fell into "Not Yet Mapped" even
+    // though they're exactly the entity this chart is built to show.
+    return CANONICAL_HEAD_FULLNAME[canonicalName] || canonicalName;
   }
 
   // ---- Roll up Achieved + Pipeline per VP, only for FY 2026-2027 ----
@@ -1708,11 +1776,12 @@ function renderGoals(){
   // (typo, nickname, missing middle name), or their reporting chain's TeamLead
   // field is blank/broken/circular before it reaches a VP-designated person.
   const unmappedByName = {};
-  function trackUnmapped(name, value, kind){
+  function trackUnmapped(name, value, kind, note){
     const key = (name || '').trim() || '(blank name)';
-    if (!unmappedByName[key]) unmappedByName[key] = { value: 0, kinds: new Set() };
+    if (!unmappedByName[key]) unmappedByName[key] = { value: 0, kinds: new Set(), note: null };
     unmappedByName[key].value += value;
     unmappedByName[key].kinds.add(kind);
+    if (note) unmappedByName[key].note = note;
   }
 
   goalFyRows.forEach(row => {
@@ -1720,9 +1789,9 @@ function renderGoals(){
     if (sp) {
       const booking = parseNum(row["Booking"]);
       totalCompanyBooking += booking;
-      const { canonicalName, vp } = resolveSalesRepIdentity(sp);
+      const { canonicalName, vp, ambiguousNote } = resolveSalesRepIdentity(sp);
       if (vp && booking) addMember(vp, canonicalName, booking, 0, 'sales');
-      else if (booking) { unmappedBooking += booking; trackUnmapped(canonicalName || sp, booking, 'Booking'); }
+      else if (booking) { unmappedBooking += booking; trackUnmapped(canonicalName || sp, booking, 'Booking', ambiguousNote); }
     }
     const owner = canonicalDeliveryHead(row["Project Owner"]);
     if (owner) {
@@ -1739,14 +1808,48 @@ function renderGoals(){
     if (!lo) return;
     const val = parseNum(row["OrderValue"]);
     totalCompanyPipeline += val;
-    const { canonicalName, vp } = resolveSalesRepIdentity(lo);
+    const { canonicalName, vp, ambiguousNote } = resolveSalesRepIdentity(lo);
     if (vp && val) addMember(vp, canonicalName, 0, val, 'sales');
-    else if (val) { unmappedPipeline += val; trackUnmapped(canonicalName || lo, val, 'Pipeline'); }
+    else if (val) { unmappedPipeline += val; trackUnmapped(canonicalName || lo, val, 'Pipeline', ambiguousNote); }
   });
 
   const totalAchievedCompanyWide = totalCompanyBooking + totalCompanyReceipt;
   const totalUnmapped = unmappedBooking + unmappedReceipt + unmappedPipeline;
   renderGoalUnmappedSection(unmappedByName, totalUnmapped);
+
+  // ---- Revenue matched to the cost sheet's own period (its most recent quarter) ----
+  // Computed independently of the top-nav Quarter/FY filter, using the same resolution
+  // helpers above, so the Department P&L table always compares like-for-like periods.
+  const costPeriod = (rawHrCostRows.length && rawHrCostRows[0].months.length)
+    ? monthLabelToQuarterFy(rawHrCostRows[0].months[rawHrCostRows[0].months.length - 1].label)
+    : null;
+  lastCostPeriodReceiptByOwner = {};
+  lastCostPeriodVpAchieved = {};
+  lastCostPeriodLiteralSalesPerson = {};
+  lastCostPeriodLabel = costPeriod ? `${costPeriod.quarter} FY${costPeriod.fy}` : '';
+  if (costPeriod) {
+    const periodRows = rawBookingRows.filter(r => {
+      const qTok = (r["Quarter"] || "").trim().split(" ")[0];
+      const fy = (r["FY"] || "").trim();
+      return qTok === costPeriod.quarter && fy === costPeriod.fy;
+    });
+    periodRows.forEach(row => {
+      const owner = canonicalDeliveryHead(row["Project Owner"]);
+      const receipt = parseNum(row["Receipt Amount"]);
+      if (owner && receipt) {
+        lastCostPeriodReceiptByOwner[owner] = (lastCostPeriodReceiptByOwner[owner] || 0) + receipt;
+        const vp = resolveVpForDeliveryHead(owner);
+        if (vp) lastCostPeriodVpAchieved[vp] = (lastCostPeriodVpAchieved[vp] || 0) + receipt;
+      }
+      const spLiteral = (row["Sales Person"] || "").trim();
+      const booking = parseNum(row["Booking"]);
+      if (spLiteral && booking) {
+        lastCostPeriodLiteralSalesPerson[spLiteral] = (lastCostPeriodLiteralSalesPerson[spLiteral] || 0) + booking;
+        const { vp } = resolveSalesRepIdentity(spLiteral);
+        if (vp) lastCostPeriodVpAchieved[vp] = (lastCostPeriodVpAchieved[vp] || 0) + booking;
+      }
+    });
+  }
 
   // ---- Targets: from VP_Targets sheet, defaulting to 0 if not configured ----
   const targetByVp = {};
@@ -1831,11 +1934,12 @@ function renderGoalUnmappedSection(unmappedByName, totalUnmapped){
     return;
   }
   section.style.display = 'block';
-  lastGoalUnmappedRows = entries.map(([name, d]) => ({ Name: name, Source: Array.from(d.kinds).join(' + '), Value: d.value }));
+  lastGoalUnmappedRows = entries.map(([name, d]) => ({ Name: name, Source: Array.from(d.kinds).join(' + '), Value: d.value, Note: d.note || '' }));
 
   let html = `<table class="data-table"><thead><tr><th>Name (as it appears in the source sheet)</th><th>Source</th><th>Value</th></tr></thead><tbody>`;
   entries.forEach(([name, d]) => {
-    html += `<tr><td>${name}</td><td>${Array.from(d.kinds).join(' + ')}</td><td>${fmtCurrencyFull(d.value)}</td></tr>`;
+    const noteHtml = d.note ? `<br><span style="font-size:11px; color:var(--muted); font-weight:400;">${d.note}</span>` : '';
+    html += `<tr><td>${name}${noteHtml}</td><td>${Array.from(d.kinds).join(' + ')}</td><td>${fmtCurrencyFull(d.value)}</td></tr>`;
   });
   html += `<tr class="total-row"><td>Total unmapped</td><td></td><td>${fmtCurrencyFull(totalUnmapped)}</td></tr>`;
   html += `</tbody></table>`;
