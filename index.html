@@ -318,6 +318,7 @@
       <button class="dash-tab" data-dash="receipt" onclick="switchDashboard('receipt')">Business (Receipt)</button>
       <button class="dash-tab" data-dash="linkedin" onclick="switchDashboard('linkedin')">Outbound LinkedIn</button>
       <button class="dash-tab" data-dash="bank" onclick="switchDashboard('bank')">Bank (Treasury)</button>
+      <button class="dash-tab" data-dash="investments" onclick="switchDashboard('investments')">Investments</button>
       <button class="dash-tab" data-dash="hr" onclick="switchDashboard('hr')">HR</button>
       <button class="dash-tab" data-dash="performance" onclick="switchDashboard('performance')">Performance</button>
     </div>
@@ -357,7 +358,7 @@
             <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Pipeline
           </div>
         </div>
-        <div class="section-desc">Click any VP's bar to see their team-wise breakdown below. "Achieved" is Booking value for sales VPs and Receipts collected for delivery VPs. If a VP looks too low, check the "Not Yet Mapped to a VP" panel below the drilldown — their numbers may be sitting there instead.</div>
+        <div class="section-desc">Click any VP's bar to see their team-wise breakdown below. "Achieved" is Booking value for sales VPs and Receipts collected for delivery VPs. "Pipeline" is CRM open opportunities for sales VPs, and EWMS Pending (expected but not-yet-received payments) for delivery VPs — delivery doesn't have a CRM pipeline of its own. If a VP looks too low, check the "Not Yet Mapped to a VP" panel below the drilldown — their numbers may be sitting there instead.</div>
         <div class="chart-scroll"><div class="chart-wrap" id="goalVpChartWrap"><canvas id="chartGoalVp"></canvas></div></div>
         <div class="section-export"><button class="export-mini" onclick="downloadCsv('vp_goal_rollup.csv', lastGoalVpRows)">⬇ Export CSV</button></div>
       </div>
@@ -736,6 +737,18 @@
 
     </div>
 
+    <!-- ============ INVESTMENTS — placeholder, access for Ashish (Finance) ============ -->
+    <div id="investmentsDashboardView" style="display:none;">
+      <div class="section">
+        <div class="section-head">
+          <div><span class="section-title">Investments</span></div>
+        </div>
+        <div class="placeholder-card">
+          Not connected yet — waiting on the published CSV link. Once that's shared, this will show each portfolio company with amount invested, current value, ownership %, and status, the same way Sales and Receipts are wired up.
+        </div>
+      </div>
+    </div>
+
     <!-- ============ PERFORMANCE — placeholder ============ -->
     <div id="performanceDashboardView" style="display:none;">
       <div class="section">
@@ -1006,7 +1019,7 @@ function getSalesRoster(){
 
 // ---------- Dashboard tab switching ----------
 function switchDashboard(which){
-  const views = { goal: 'goalDashboardView', sales: 'salesDashboardView', receipt: 'receiptDashboardView', linkedin: 'linkedinDashboardView', bank: 'bankDashboardView', hr: 'hrDashboardView', performance: 'performanceDashboardView' };
+  const views = { goal: 'goalDashboardView', sales: 'salesDashboardView', receipt: 'receiptDashboardView', linkedin: 'linkedinDashboardView', bank: 'bankDashboardView', investments: 'investmentsDashboardView', hr: 'hrDashboardView', performance: 'performanceDashboardView' };
   Object.entries(views).forEach(([key, id]) => {
     document.getElementById(id).style.display = (key === which) ? 'block' : 'none';
   });
@@ -1725,6 +1738,30 @@ function renderGoals(){
     else console.warn('[Goal] First-name override FAILED — no HR row found with EmployeeCode', code, 'for', firstKey);
   });
 
+  // Named overrides where the intended person is known by their exact HR "Name" field
+  // but not (yet) their EmployeeCode — used to force a specific identity for a Booking/
+  // Pipeline name that would otherwise resolve ambiguously or incorrectly. Add the
+  // EmployeeCode above instead, once known, for a more robust match.
+  const KNOWN_NAME_TARGETS = ['Nitin'];
+  KNOWN_NAME_TARGETS.forEach(targetName => {
+    const rec = rawHrRows.find(r => (r.Name || '').trim() === targetName);
+    if (rec) {
+      const fullKey = normNameKey(targetName);
+      const firstKey = fullKey.split(/\s+/)[0];
+      hrByFullName[fullKey] = rec;
+      salesFullNameIndex[fullKey] = rec;
+      salesFirstNameIndex[firstKey] = rec.Name;
+    } else {
+      console.warn('[Goal] Known-name target not found in HR sheet (check exact spelling):', targetName);
+    }
+  });
+
+  // Standalone VP-equivalent entities: people who run their own sales pod but don't (or
+  // can't yet be confirmed to) resolve through the normal HR TeamLead chain. Booking/
+  // Pipeline rows attributed to these literal names become their OWN VP bar directly,
+  // rather than folding into another VP or sitting in "Not Yet Mapped".
+  const STANDALONE_VP_NAMES = { 'daljinder': 'Daljinder' };
+
   function resolveSalesRepIdentity(repName){
     const key = normNameKey(repName);
     if (KNOWN_AMBIGUOUS_NAMES[key]) return { canonicalName: repName, vp: null, ambiguousNote: KNOWN_AMBIGUOUS_NAMES[key] };
@@ -1789,9 +1826,14 @@ function renderGoals(){
     if (sp) {
       const booking = parseNum(row["Booking"]);
       totalCompanyBooking += booking;
-      const { canonicalName, vp, ambiguousNote } = resolveSalesRepIdentity(sp);
-      if (vp && booking) addMember(vp, canonicalName, booking, 0, 'sales');
-      else if (booking) { unmappedBooking += booking; trackUnmapped(canonicalName || sp, booking, 'Booking', ambiguousNote); }
+      const standaloneVp = STANDALONE_VP_NAMES[sp.toLowerCase()];
+      if (standaloneVp) {
+        if (booking) addMember(standaloneVp, standaloneVp, booking, 0, 'sales');
+      } else {
+        const { canonicalName, vp, ambiguousNote } = resolveSalesRepIdentity(sp);
+        if (vp && booking) addMember(vp, canonicalName, booking, 0, 'sales');
+        else if (booking) { unmappedBooking += booking; trackUnmapped(canonicalName || sp, booking, 'Booking', ambiguousNote); }
+      }
     }
     const owner = canonicalDeliveryHead(row["Project Owner"]);
     if (owner) {
@@ -1808,6 +1850,11 @@ function renderGoals(){
     if (!lo) return;
     const val = parseNum(row["OrderValue"]);
     totalCompanyPipeline += val;
+    const standaloneVp = STANDALONE_VP_NAMES[lo.toLowerCase()];
+    if (standaloneVp) {
+      if (val) addMember(standaloneVp, standaloneVp, 0, val, 'sales');
+      return;
+    }
     const { canonicalName, vp, ambiguousNote } = resolveSalesRepIdentity(lo);
     if (vp && val) addMember(vp, canonicalName, 0, val, 'sales');
     else if (val) { unmappedPipeline += val; trackUnmapped(canonicalName || lo, val, 'Pipeline', ambiguousNote); }
@@ -1870,7 +1917,20 @@ function renderGoals(){
   const crToUsd = (cr) => (cr * 10000000) / exchangeRate; // ₹1 Cr = 1,00,00,000; convert to this app's internal USD unit
   const targetVals = allVps.map(v => crToUsd(targetByVp[v] || 0));
   const achievedVals = allVps.map(v => (vpData[v] ? vpData[v].achieved : 0));
-  const pipelineVals = allVps.map(v => (vpData[v] ? vpData[v].pipeline : 0));
+  // "Pipeline" means different things by VP type: for Sales VPs it's the CRM pipeline
+  // (open opportunities); delivery VPs don't have CRM opportunities at all, so that's
+  // always $0 for them — the forward-looking equivalent on the delivery side is EWMS
+  // Pending (payments expected but not yet received) for their team's verticals.
+  const pipelineVals = allVps.map(v => {
+    const data = vpData[v];
+    if (!data) return 0;
+    const memberEntries = Object.entries(data.members);
+    const hasDelivery = memberEntries.some(([, m]) => m.kind === 'delivery');
+    if (hasDelivery) {
+      return memberEntries.reduce((sum, [name, m]) => sum + (m.kind === 'delivery' && lastEwmsByHead[name] ? lastEwmsByHead[name].pending : 0), 0);
+    }
+    return data.pipeline;
+  });
   lastGoalVpRows = allVps.map((v,i) => ({ VP: v, TargetCr: targetByVp[v] || 0, Achieved: achievedVals[i], Pipeline: pipelineVals[i] }));
 
   // ---- Top KPIs ----
