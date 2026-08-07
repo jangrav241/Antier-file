@@ -317,7 +317,7 @@
       <button class="dash-tab" data-dash="sales" onclick="switchDashboard('sales')">Sales</button>
       <button class="dash-tab" data-dash="receipt" onclick="switchDashboard('receipt')">Business (Receipt)</button>
       <button class="dash-tab" data-dash="linkedin" onclick="switchDashboard('linkedin')">Outbound LinkedIn</button>
-      <button class="dash-tab" data-dash="bank" onclick="switchDashboard('bank')">Bank (Treasury)</button>
+      <button class="dash-tab" data-dash="bank" onclick="switchDashboard('bank')">Funds</button>
       <button class="dash-tab" data-dash="investments" onclick="switchDashboard('investments')">Investments</button>
       <button class="dash-tab" data-dash="hr" onclick="switchDashboard('hr')">HR</button>
       <button class="dash-tab" data-dash="performance" onclick="switchDashboard('performance')">Performance</button>
@@ -615,7 +615,7 @@
     <div id="bankDashboardView" style="display:none;">
       <div id="treasuryPlaceholder" class="section" style="display:none;">
         <div class="section-head">
-          <div><span class="section-title">Bank (Treasury)</span></div>
+          <div><span class="section-title">Funds</span></div>
         </div>
         <div class="placeholder-card">
           Couldn't find the "Financial Position" block in the department cost sheet — it may have moved or been renamed. Let me know if the source changed.
@@ -733,6 +733,23 @@
         <div class="chart-scroll"><div class="chart-wrap" id="hrCostPnlChartWrap"><canvas id="chartHrCostPnl"></canvas></div></div>
         <div id="hrCostPerfTableWrap" class="chart-scroll" style="margin-top:20px;"></div>
         <div class="section-export"><button class="export-mini" onclick="downloadCsv('department_pnl.csv', lastHrCostPerfRows)">⬇ Export CSV</button></div>
+      </div>
+
+      <div class="section" id="hrCostPerfPrevSection" style="display:none;">
+        <div class="section-head">
+          <div><span class="section-title">Department P&amp;L — Previous Quarter</span><span class="live-pill">Live</span></div>
+          <div class="section-note">
+            <span class="legend-dot" style="background:#1E824C"></span>Revenue
+            <span class="legend-dot" style="background:#C0392B; margin-left:14px;"></span>Salary Cost
+          </div>
+        </div>
+        <div class="section-desc">
+          Same calculation as above, one quarter earlier — for comparing quarter-over-quarter trend.
+          <span id="hrCostPerfMonthNotePrev" style="display:block; margin-top:4px; font-style:italic;"></span>
+        </div>
+        <div class="chart-scroll"><div class="chart-wrap" id="hrCostPnlChartWrapPrev"><canvas id="chartHrCostPnlPrev"></canvas></div></div>
+        <div id="hrCostPerfTableWrapPrev" class="chart-scroll" style="margin-top:20px;"></div>
+        <div class="section-export"><button class="export-mini" onclick="downloadCsv('department_pnl_previous_quarter.csv', lastHrCostPerfRowsPrev)">⬇ Export CSV</button></div>
       </div>
 
     </div>
@@ -892,6 +909,13 @@ let lastCostPeriodReceiptByOwner = {};
 let lastCostPeriodVpAchieved = {};
 let lastCostPeriodLiteralSalesPerson = {};
 let lastCostPeriodLabel = '';
+let lastCostPeriodQuarter = '', lastCostPeriodFy = '';
+let lastCostPeriodReceiptByOwnerPrev = {};
+let lastCostPeriodVpAchievedPrev = {};
+let lastCostPeriodLiteralSalesPersonPrev = {};
+let lastCostPeriodLabelPrev = '';
+let lastCostPeriodQuarterPrev = '', lastCostPeriodFyPrev = '';
+let lastHrCostPerfRowsPrev = [];
 
 // Maps a cost-sheet month label (e.g. "Apr-26") to the Quarter token + FY string used
 // elsewhere in this app (Apr-Jun = Q1, Jul-Sep = Q2, Oct-Dec = Q3, Jan-Mar = Q4 of the
@@ -906,6 +930,26 @@ function monthLabelToQuarterFy(label){
   let fyStartYear = 2000 + parseInt(parts[1], 10);
   if (['jan','feb','mar'].includes(monKey)) fyStartYear -= 1;
   return { quarter, fy: `${fyStartYear}-${fyStartYear + 1}` };
+}
+function prevQuarterFy(quarter, fy){
+  const order = ['Q1','Q2','Q3','Q4'];
+  const idx = order.indexOf(quarter);
+  const [startYear] = fy.split('-').map(Number);
+  if (idx <= 0) return { quarter: 'Q4', fy: `${startYear - 1}-${startYear}` };
+  return { quarter: order[idx - 1], fy };
+}
+// Sums a cost-sheet department's months that fall within one specific quarter+FY —
+// needed once the sheet spans more than one quarter, so "this quarter" and "last
+// quarter" each only pull their own months rather than everything blending together.
+function sumCostForQuarter(monthsArr, quarter, fy){
+  const matching = monthsArr.filter(m => {
+    const q = monthLabelToQuarterFy(m.label);
+    return q && q.quarter === quarter && q.fy === fy;
+  });
+  const totalSalary = matching.reduce((s, m) => s + m.salary, 0);
+  const withHeadcount = matching.filter(m => m.count > 0);
+  const headcount = withHeadcount.length ? withHeadcount[withHeadcount.length - 1].count : 0;
+  return { totalSalary, headcount, monthsFound: matching.length };
 }
 let lastHrDeptRows = [], lastHrBenchedRows = [], lastHrResignedRows = [];
 let lastLinkedinChartRows = [], lastLinkedinTableRows = [], lastLinkedinIndustryRows = [];
@@ -1435,11 +1479,8 @@ function tryRenderHrCostPerf(){
 }
 
 let chartHrCostPnl;
-function renderHrCostPerf(){
-  const wrap = document.getElementById('hrCostPerfTableWrap');
-  const noteWrap = document.getElementById('hrCostPerfMonthNote');
-  if (!wrap) return;
-
+let chartHrCostPnlPrev;
+function buildCostPerfRows(quarter, fy, receiptByOwner, vpAchieved, literalSalesPerson){
   // Some cost-sheet rows share a canonical revenue owner (e.g. ASB and Technology &
   // Digital Operations both roll up to Deepak in Bookings/Receipts) — merge those into
   // one row (summing headcount + cost) BEFORE joining revenue, so a shared revenue figure
@@ -1447,11 +1488,10 @@ function renderHrCostPerf(){
   const grouped = {};
   const passthrough = [];
   rawHrCostRows.forEach(dept => {
-    // Sum cost & headcount across every month in the sheet (currently one full quarter),
-    // matched to Revenue for that SAME quarter below — comparing a single month's cost
-    // against a whole quarter's revenue (or vice versa) would understate/overstate margin.
-    const totalSalary = dept.months.reduce((s, m) => s + m.salary, 0);
-    const latestHeadcount = dept.months[dept.months.length - 1].count;
+    // Only the months that fall inside THIS quarter — once the sheet spans more than one
+    // quarter, summing every month regardless of period would blend two quarters together.
+    const { totalSalary, headcount: latestHeadcount, monthsFound } = sumCostForQuarter(dept.months, quarter, fy);
+    if (!monthsFound) return; // this department has no cost data for this quarter at all
     const mapping = HR_COST_LABEL_MAP[dept.label] || { canonical: null, type: 'unmapped', note: 'Not recognized — add this label to HR_COST_LABEL_MAP.' };
     if (mapping.canonical && (mapping.type === 'delivery' || mapping.type === 'sales_vp' || mapping.type === 'literal_sales_person')) {
       const key = mapping.type + ':' + mapping.canonical;
@@ -1469,12 +1509,12 @@ function renderHrCostPerf(){
     mapping: { canonical: g.canonical, type: g.type, note: g.note }
   }));
 
-  const rows = [...mergedRows, ...passthrough].map(d => {
+  return [...mergedRows, ...passthrough].map(d => {
     const mapping = d.mapping;
     let revenue = null;
-    if (mapping.type === 'delivery' && mapping.canonical) revenue = lastCostPeriodReceiptByOwner[mapping.canonical] || 0;
-    else if (mapping.type === 'sales_vp' && mapping.canonical) revenue = lastCostPeriodVpAchieved[mapping.canonical] || 0;
-    else if (mapping.type === 'literal_sales_person' && mapping.canonical) revenue = lastCostPeriodLiteralSalesPerson[mapping.canonical] || 0;
+    if (mapping.type === 'delivery' && mapping.canonical) revenue = receiptByOwner[mapping.canonical] || 0;
+    else if (mapping.type === 'sales_vp' && mapping.canonical) revenue = vpAchieved[mapping.canonical] || 0;
+    else if (mapping.type === 'literal_sales_person' && mapping.canonical) revenue = literalSalesPerson[mapping.canonical] || 0;
     const hasRevenue = revenue !== null && revenue !== undefined;
     // Salary Cost comes from the accounts sheet in raw INR rupees, while Revenue (Booking/
     // Receipts) is already in this app's internal USD-equivalent unit — convert cost to the
@@ -1488,28 +1528,22 @@ function renderHrCostPerf(){
     const revenuePerHead = hasRevenue && d.headcount > 0 ? (revenue / d.headcount) : null;
     return { label: d.label, headcount: d.headcount, cost, costInr, mapping, revenue, hasRevenue, margin, marginPct, costRatio, revenuePerHead };
   }).sort((a,b) => b.cost - a.cost);
+}
 
-  lastHrCostPerfRows = rows.map(r => ({
-    Department: r.label, Period: lastCostPeriodLabel, Headcount: r.headcount, SalaryCostINR: r.costInr,
-    Revenue: r.hasRevenue ? r.revenue : '', Margin: r.hasRevenue ? r.margin : '',
-    MarginPct: r.hasRevenue && r.marginPct !== null ? r.marginPct.toFixed(1) + '%' : '',
-    CostToRevenueRatio: r.costRatio !== null ? r.costRatio.toFixed(2) : '',
-    RevenuePerHead: r.revenuePerHead !== null ? r.revenuePerHead : '',
-    Note: r.mapping.note || ''
-  }));
+const formulaCaption = (text) => `<br><span style="font-size:9px; color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">${text}</span>`;
 
-  if (noteWrap) noteWrap.textContent = lastCostPeriodLabel ? `Showing ${lastCostPeriodLabel} — Salary Cost summed across every month in the cost sheet for this quarter, Revenue filtered to the same quarter.` : '';
+function renderCostPerfInto(rows, tableWrapId, chartWrapId, chartCanvasId, chartRef){
+  const wrap = document.getElementById(tableWrapId);
+  if (!wrap) return chartRef;
 
-  // ---- Chart: Cost vs Revenue, only for departments with a mapped revenue source ----
-  // (support functions like HR/Finance/Legal have no revenue of their own — showing them
-  // here as a $0 bar would misread as underperformance rather than "not applicable".)
   const chartRows = rows.filter(r => r.hasRevenue).sort((a,b) => b.revenue - a.revenue);
-  const chartWrapEl = document.getElementById('hrCostPnlChartWrap');
+  const chartWrapEl = document.getElementById(chartWrapId);
+  let newChartRef = chartRef;
   if (chartWrapEl) {
     chartWrapEl.style.height = Math.max(220, chartRows.length * 40 + 50) + 'px';
-    const ctx = document.getElementById('chartHrCostPnl').getContext('2d');
-    if (chartHrCostPnl) chartHrCostPnl.destroy();
-    chartHrCostPnl = new Chart(ctx, {
+    const ctx = document.getElementById(chartCanvasId).getContext('2d');
+    if (chartRef) chartRef.destroy();
+    newChartRef = new Chart(ctx, {
       type: 'bar',
       data: {
         labels: chartRows.map(r => r.label.replace(/ - .*/, '')),
@@ -1522,7 +1556,6 @@ function renderHrCostPerf(){
     });
   }
 
-  const formulaCaption = (text) => `<br><span style="font-size:9px; color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">${text}</span>`;
   let html = `<table class="data-table"><thead><tr>
     <th>Department</th><th>Headcount</th><th>Salary Cost</th><th>Revenue</th>
     <th>Margin${formulaCaption('Revenue − Cost')}</th>
@@ -1548,6 +1581,50 @@ function renderHrCostPerf(){
   html += `<tr class="total-row"><td>Total</td><td>${totalHeadcount}</td><td>${fmtCurrencyFull(totalCost)}</td><td>${fmtCurrencyFull(totalRevenue)}</td><td>${fmtCurrencyFull(totalRevenue-totalCost)}</td><td></td><td></td><td></td></tr>`;
   html += `</tbody></table>`;
   wrap.innerHTML = html;
+  return newChartRef;
+}
+
+function renderHrCostPerf(){
+  if (!rawHrCostRows.length) return;
+  const curQ = lastCostPeriodQuarter, curFy = lastCostPeriodFy;
+  const prevQ = lastCostPeriodQuarterPrev, prevFy = lastCostPeriodFyPrev;
+
+  const noteWrap = document.getElementById('hrCostPerfMonthNote');
+  if (noteWrap) noteWrap.textContent = lastCostPeriodLabel ? `Showing ${lastCostPeriodLabel} — Salary Cost summed across this quarter's months in the cost sheet, Revenue filtered to the same quarter.` : '';
+  const noteWrapPrev = document.getElementById('hrCostPerfMonthNotePrev');
+  if (noteWrapPrev) noteWrapPrev.textContent = lastCostPeriodLabelPrev ? `Showing ${lastCostPeriodLabelPrev}.` : 'No earlier quarter found in the cost sheet yet.';
+
+  const rows = buildCostPerfRows(curQ, curFy, lastCostPeriodReceiptByOwner, lastCostPeriodVpAchieved, lastCostPeriodLiteralSalesPerson);
+  lastHrCostPerfRows = rows.map(r => ({
+    Department: r.label, Period: lastCostPeriodLabel, Headcount: r.headcount, SalaryCostINR: r.costInr,
+    Revenue: r.hasRevenue ? r.revenue : '', Margin: r.hasRevenue ? r.margin : '',
+    MarginPct: r.hasRevenue && r.marginPct !== null ? r.marginPct.toFixed(1) + '%' : '',
+    CostToRevenueRatio: r.costRatio !== null ? r.costRatio.toFixed(2) : '',
+    RevenuePerHead: r.revenuePerHead !== null ? r.revenuePerHead : '',
+    Note: r.mapping.note || ''
+  }));
+  chartHrCostPnl = renderCostPerfInto(rows, 'hrCostPerfTableWrap', 'hrCostPnlChartWrap', 'chartHrCostPnl', chartHrCostPnl);
+
+  const prevSectionEl = document.getElementById('hrCostPerfPrevSection');
+  if (prevPeriod_hasData()) {
+    if (prevSectionEl) prevSectionEl.style.display = 'block';
+    const rowsPrev = buildCostPerfRows(prevQ, prevFy, lastCostPeriodReceiptByOwnerPrev, lastCostPeriodVpAchievedPrev, lastCostPeriodLiteralSalesPersonPrev);
+    lastHrCostPerfRowsPrev = rowsPrev.map(r => ({
+      Department: r.label, Period: lastCostPeriodLabelPrev, Headcount: r.headcount, SalaryCostINR: r.costInr,
+      Revenue: r.hasRevenue ? r.revenue : '', Margin: r.hasRevenue ? r.margin : '',
+      MarginPct: r.hasRevenue && r.marginPct !== null ? r.marginPct.toFixed(1) + '%' : '',
+      CostToRevenueRatio: r.costRatio !== null ? r.costRatio.toFixed(2) : '',
+      RevenuePerHead: r.revenuePerHead !== null ? r.revenuePerHead : '',
+      Note: r.mapping.note || ''
+    }));
+    chartHrCostPnlPrev = renderCostPerfInto(rowsPrev, 'hrCostPerfTableWrapPrev', 'hrCostPnlChartWrapPrev', 'chartHrCostPnlPrev', chartHrCostPnlPrev);
+  } else if (prevSectionEl) {
+    prevSectionEl.style.display = 'none';
+  }
+
+  function prevPeriod_hasData(){
+    return rawHrCostRows.some(dept => sumCostForQuarter(dept.months, prevQ, prevFy).monthsFound > 0);
+  }
 }
 
 function renderHr(rows){
@@ -1848,39 +1925,57 @@ function renderGoals(){
   const totalUnmapped = unmappedBooking + unmappedReceipt + unmappedPipeline;
   renderGoalUnmappedSection(unmappedByName, totalUnmapped);
 
-  // ---- Revenue matched to the cost sheet's own period (its most recent quarter) ----
+  // ---- Revenue matched to the cost sheet's own period(s) ----
   // Computed independently of the top-nav Quarter/FY filter, using the same resolution
   // helpers above, so the Department P&L table always compares like-for-like periods.
-  const costPeriod = (rawHrCostRows.length && rawHrCostRows[0].months.length)
-    ? monthLabelToQuarterFy(rawHrCostRows[0].months[rawHrCostRows[0].months.length - 1].label)
-    : null;
-  lastCostPeriodReceiptByOwner = {};
-  lastCostPeriodVpAchieved = {};
-  lastCostPeriodLiteralSalesPerson = {};
-  lastCostPeriodLabel = costPeriod ? `${costPeriod.quarter} FY${costPeriod.fy}` : '';
-  if (costPeriod) {
+  // Also computes the PRIOR quarter the same way, for the quarter-over-quarter view.
+  function computePeriodRevenue(periodQuarter, periodFy){
+    const result = { receiptByOwner: {}, vpAchieved: {}, literalSalesPerson: {} };
+    if (!periodQuarter) return result;
     const periodRows = rawBookingRows.filter(r => {
       const qTok = (r["Quarter"] || "").trim().split(" ")[0];
       const fy = (r["FY"] || "").trim();
-      return qTok === costPeriod.quarter && fy === costPeriod.fy;
+      return qTok === periodQuarter && fy === periodFy;
     });
     periodRows.forEach(row => {
       const owner = canonicalDeliveryHead(row["Project Owner"]);
       const receipt = parseNum(row["Receipt Amount"]);
       if (owner && receipt) {
-        lastCostPeriodReceiptByOwner[owner] = (lastCostPeriodReceiptByOwner[owner] || 0) + receipt;
+        result.receiptByOwner[owner] = (result.receiptByOwner[owner] || 0) + receipt;
         const vp = resolveVpForDeliveryHead(owner);
-        if (vp) lastCostPeriodVpAchieved[vp] = (lastCostPeriodVpAchieved[vp] || 0) + receipt;
+        if (vp) result.vpAchieved[vp] = (result.vpAchieved[vp] || 0) + receipt;
       }
       const spLiteral = (row["Sales Person"] || "").trim();
       const booking = parseNum(row["Booking"]);
       if (spLiteral && booking) {
-        lastCostPeriodLiteralSalesPerson[spLiteral] = (lastCostPeriodLiteralSalesPerson[spLiteral] || 0) + booking;
+        result.literalSalesPerson[spLiteral] = (result.literalSalesPerson[spLiteral] || 0) + booking;
         const { vp } = resolveSalesRepIdentity(spLiteral);
-        if (vp) lastCostPeriodVpAchieved[vp] = (lastCostPeriodVpAchieved[vp] || 0) + booking;
+        if (vp) result.vpAchieved[vp] = (result.vpAchieved[vp] || 0) + booking;
       }
     });
+    return result;
   }
+
+  const costPeriod = (rawHrCostRows.length && rawHrCostRows[0].months.length)
+    ? monthLabelToQuarterFy(rawHrCostRows[0].months[rawHrCostRows[0].months.length - 1].label)
+    : null;
+  const prevPeriod = costPeriod ? prevQuarterFy(costPeriod.quarter, costPeriod.fy) : null;
+
+  const curRev = computePeriodRevenue(costPeriod && costPeriod.quarter, costPeriod && costPeriod.fy);
+  lastCostPeriodReceiptByOwner = curRev.receiptByOwner;
+  lastCostPeriodVpAchieved = curRev.vpAchieved;
+  lastCostPeriodLiteralSalesPerson = curRev.literalSalesPerson;
+  lastCostPeriodQuarter = costPeriod ? costPeriod.quarter : '';
+  lastCostPeriodFy = costPeriod ? costPeriod.fy : '';
+  lastCostPeriodLabel = costPeriod ? `${costPeriod.quarter} FY${costPeriod.fy}` : '';
+
+  const prevRev = computePeriodRevenue(prevPeriod && prevPeriod.quarter, prevPeriod && prevPeriod.fy);
+  lastCostPeriodReceiptByOwnerPrev = prevRev.receiptByOwner;
+  lastCostPeriodVpAchievedPrev = prevRev.vpAchieved;
+  lastCostPeriodLiteralSalesPersonPrev = prevRev.literalSalesPerson;
+  lastCostPeriodQuarterPrev = prevPeriod ? prevPeriod.quarter : '';
+  lastCostPeriodFyPrev = prevPeriod ? prevPeriod.fy : '';
+  lastCostPeriodLabelPrev = prevPeriod ? `${prevPeriod.quarter} FY${prevPeriod.fy}` : '';
 
   // ---- Targets: from VP_Targets sheet, defaulting to 0 if not configured ----
   const targetByVp = {};
