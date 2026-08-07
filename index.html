@@ -744,7 +744,7 @@
           <div><span class="section-title">Investments</span></div>
         </div>
         <div class="placeholder-card">
-          Not connected yet — waiting on the published CSV link. Once that's shared, this will show each portfolio company with amount invested, current value, ownership %, and status, the same way Sales and Receipts are wired up.
+          Not connected yet — waiting on data from the CFO.
         </div>
       </div>
     </div>
@@ -1738,29 +1738,13 @@ function renderGoals(){
     else console.warn('[Goal] First-name override FAILED — no HR row found with EmployeeCode', code, 'for', firstKey);
   });
 
-  // Named overrides where the intended person is known by their exact HR "Name" field
-  // but not (yet) their EmployeeCode — used to force a specific identity for a Booking/
-  // Pipeline name that would otherwise resolve ambiguously or incorrectly. Add the
-  // EmployeeCode above instead, once known, for a more robust match.
-  const KNOWN_NAME_TARGETS = ['Nitin'];
-  KNOWN_NAME_TARGETS.forEach(targetName => {
-    const rec = rawHrRows.find(r => (r.Name || '').trim() === targetName);
-    if (rec) {
-      const fullKey = normNameKey(targetName);
-      const firstKey = fullKey.split(/\s+/)[0];
-      hrByFullName[fullKey] = rec;
-      salesFullNameIndex[fullKey] = rec;
-      salesFirstNameIndex[firstKey] = rec.Name;
-    } else {
-      console.warn('[Goal] Known-name target not found in HR sheet (check exact spelling):', targetName);
-    }
-  });
-
   // Standalone VP-equivalent entities: people who run their own sales pod but don't (or
   // can't yet be confirmed to) resolve through the normal HR TeamLead chain. Booking/
   // Pipeline rows attributed to these literal names become their OWN VP bar directly,
-  // rather than folding into another VP or sitting in "Not Yet Mapped".
-  const STANDALONE_VP_NAMES = { 'daljinder': 'Daljinder' };
+  // rather than folding into another VP or sitting in "Not Yet Mapped". Both the bare
+  // first name and the full name are mapped, in case the two source sheets record it
+  // differently (as happened with Daljinder).
+  const STANDALONE_VP_NAMES = { 'daljinder': 'Daljinder', 'nitin': 'Nitin Sokhey', 'nitin sokhey': 'Nitin Sokhey' };
 
   function resolveSalesRepIdentity(repName){
     const key = normNameKey(repName);
